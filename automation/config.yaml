@@ -7,8 +7,9 @@ azure:
   vnet_name: ""
   subnet_name: ""
 server:
-  ip: "0.0.0.0"
+  ip: "4.210.123.215"
 adguard:
   username: "admin"
   upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
   blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
+
