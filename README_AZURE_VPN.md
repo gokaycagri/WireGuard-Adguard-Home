@@ -47,10 +47,16 @@ Once the script finishes, it will display your secure links:
 *   **User:** `admin` (AdGuard)
 *   **Password:** *The passwords you set during setup.*
 
-## Management
+## Maintenance
 
-### Updating Settings
-If you want to change settings later, run `setup.ps1` again. It will update your local configuration.
+### SSL Certificate Renewal
+SSL certificates are automatically managed by Caddy but require port 80 to be open. Since we lock this port to your IP for security, you should run this command every ~80 days (or if you see SSL errors):
+```powershell
+powershell automation/renew_ssl.ps1
+```
+
+### Verify Status
+Check if services are running:
 
 ### Deleting the System
 To remove all Azure resources and stop billing:

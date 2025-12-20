@@ -1,4 +1,4 @@
-# PowerShell Cloud-Init Generator (Pro Edition)
+# PowerShell Cloud-Init Generator (Pro Edition - Robust Passwords)
 $ErrorActionPreference = "Stop"
 
 $SCRIPT_DIR = $PSScriptRoot
@@ -7,49 +7,28 @@ $CONFIG_FILE = "$ROOT_DIR\automation\config.yaml"
 $TEMPLATE_ADGUARD = "$ROOT_DIR\automation\templates\AdGuardHome.yaml"
 $OUTPUT_FILE = "$ROOT_DIR\final_cloud_init.yaml"
 
-# Simplified Config Reader
+# --- Functions ---
 function Get-ConfigValue {
     param ([string]$Section, [string]$Key)
     $lines = Get-Content $CONFIG_FILE
     $inSection = $false
     foreach ($line in $lines) {
-        if ($line -match "^$Section\s*:") {
-            $inSection = $true
-            continue
-        }
-        if ($inSection -and $line -match "^\w+\s*:") {
-            $inSection = $false
-        }
-        if ($inSection -and $line -match "^\s+$Key\s*:\s*[`"']?([^`"']+)`?['`"]?") {
-            return $Matches[1].Trim()
-        }
+        if ($line -match "^$Section\s*:") { $inSection = $true; continue }
+        if ($inSection -and $line -match "^\w+\s*:") { $inSection = $false }
+        if ($inSection -and $line -match "^\s+$Key\s*:\s*[`"']?([^`"']+)`?['`"]?") { return $Matches[1].Trim() }
     }
     return $null
 }
 
 function Get-ConfigList {
     param ([string]$Section, [string]$Key)
-    $list = @()
-    $lines = Get-Content $CONFIG_FILE
-    $inSection = $false
-    $inList = $false
+    $list = @(); $lines = Get-Content $CONFIG_FILE; $inSection = $false; $inList = $false
     foreach ($line in $lines) {
-        if ($line -match "^$Section\s*:") {
-            $inSection = $true
-            continue
-        }
-        if ($inSection -and $line -match "^\w+\s*:") {
-            $inSection = $false
-        }
-        if ($inSection -and $line -match "^\s+$Key\s*:") {
-            $inList = $true
-            continue
-        }
-        if ($inList -and $line -match "^\s+-\s*[`"']?([^`"']+)`?['`"]?") {
-            $list += $Matches[1].Trim()
-        } elseif ($inList -and $line -match "^\s+\w+\s*:") {
-            $inList = $false
-        }
+        if ($line -match "^$Section\s*:") { $inSection = $true; continue }
+        if ($inSection -and $line -match "^\w+\s*:") { $inSection = $false }
+        if ($inSection -and $line -match "^\s+$Key\s*:") { $inList = $true; continue }
+        if ($inList -and $line -match "^\s+-\s*[`"']?([^`"']+)`?['`"]?") { $list += $Matches[1].Trim() }
+        elseif ($inList -and $line -match "^\s+\w+\s*:") { $inList = $false }
     }
     return $list
 }
@@ -72,22 +51,14 @@ if ($MyInvocation.ExpectingInput) {
     $vpnPassword = Read-Host "Enter the password for WireGuard (VPN) UI"
     $agPassword = Read-Host "Enter the password for AdGuard Home UI"
 }
-
 if ([string]::IsNullOrWhiteSpace($vpnPassword)) { $vpnPassword = "password" }
 if ([string]::IsNullOrWhiteSpace($agPassword)) { $agPassword = "password" }
 
-# 3. Prepare AdGuard Template
-if (-not (Test-Path $TEMPLATE_ADGUARD)) { Write-Error "Template not found!" }
-$agTemplate = Get-Content -Path $TEMPLATE_ADGUARD -Raw
-$agTemplate = $agTemplate.Replace("{{ADGUARD_USER}}", $ag_user)
-$agTemplate = $agTemplate.Replace("{{ADGUARD_PASS_HASH}}", "ADGUARD_HASH_PLACEHOLDER")
+# 3. Prepare Blocks
 $dnsBlock = ""; foreach ($dns in $ag_upstream) { $dnsBlock += "    - $dns`n" }
-$agTemplate = $agTemplate.Replace("{{UPSTREAM_DNS_BLOCK}}", $dnsBlock.TrimEnd())
 $filterBlock = ""; $c = 1; foreach ($url in $ag_blocklists) { $filterBlock += "  - enabled: true`n    url: $url`n    name: List $c`n    id: $c`n"; $c++ }
-$agTemplate = $agTemplate.Replace("{{BLOCKLISTS_BLOCK}}", $filterBlock.TrimEnd())
-$indentedAg = ""; foreach ($line in ($agTemplate -split "`r?`n")) { $indentedAg += "      $line`n" }
 
-# 4. Define Template
+# 4. Final Cloud-Init Template
 $template = '#cloud-config
 package_update: true
 package_upgrade: true
@@ -99,20 +70,50 @@ write_files:
       [sshd]
       enabled = true
       port = 22
-      filter = sshd
-      logpath = /var/log/auth.log
       maxretry = 3
       bantime = 1h
 
-  - path: /root/adguard/conf/AdGuardHome.yaml
-    permissions: "0644"
+  - path: /root/setup.sh
+    permissions: "0700"
     content: |
-{{ADGUARD_CONTENT}}
-  - path: /root/Caddyfile
-    content: |
+      #!/bin/bash
+      set -e
+      # 1. Generate Hashes
+      VPN_PASS="{{VPN_PASS}}"
+      AG_PASS="{{AG_PASS}}"
+      
+      # Generate high-compatibility Bcrypt hashes
+      VPN_HASH=$(htpasswd -B -n -b admin "$VPN_PASS" | cut -d ":" -f 2)
+      AG_HASH=$(htpasswd -B -n -b admin "$AG_PASS" | cut -d ":" -f 2)
+      ESCAPED_VPN_HASH=$(echo "$VPN_HASH" | sed "s/\$\/\$\$\$/g")
+
+      # 2. Create AdGuard Config
+      mkdir -p /root/adguard/conf
+      cat <<EOF > /root/adguard/conf/AdGuardHome.yaml
+      bind_host: 0.0.0.0
+      bind_port: 8080
+      users:
+        - name: {{AG_USER}}
+          password: $AG_HASH
+      dns:
+        bind_hosts: [0.0.0.0]
+        port: 53
+        upstream_dns:
+      {{UPSTREAM_DNS}}
+        protection_enabled: true
+        filtering_enabled: true
+        blocking_mode: default
+      filters:
+      {{BLOCKLISTS}}
+      setup_done: true
+      http:
+        session_ttl: 720h
+      EOF
+
+      # 3. Create Caddyfile
+      cat <<EOF > /root/Caddyfile
       {
         email admin@sslip.io
-        servers { protocols h1 h2 h3 }
       }
       (security_headers) {
         header {
@@ -125,15 +126,18 @@ write_files:
       }
       adguard.DOMAIN_PLACEHOLDER {
         import security_headers
-        reverse_proxy adguardhome:8080 { header_up Host {upstream_hostport} }
+        reverse_proxy adguardhome:8080 {
+          header_up Host {upstream_hostport}
+        }
       }
       vpn.DOMAIN_PLACEHOLDER {
         import security_headers
         reverse_proxy wg-easy:51821
       }
+      EOF
 
-  - path: /root/docker-compose.yml
-    content: |
+      # 4. Create Docker Compose
+      cat <<EOF > /root/docker-compose.yml
       services:
         caddy:
           image: caddy:latest
@@ -147,7 +151,7 @@ write_files:
           container_name: wg-easy
           environment:
             - WG_HOST=auto
-            - PASSWORD_HASH=VPN_HASH_PLACEHOLDER
+            - PASSWORD_HASH=$ESCAPED_VPN_HASH
             - WG_DEFAULT_DNS=172.20.0.53
             - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
           volumes: ["./wg-easy:/etc/wireguard"]
@@ -178,37 +182,18 @@ write_files:
         default:
           ipam:
             config: [{ subnet: 172.20.0.0/24 }]
-
-  - path: /root/setup.sh
-    permissions: "0700"
-    content: |
-      #!/bin/bash
-      VPN_PASS="{{VPN_PASS}}"
-      AG_PASS="{{AG_PASS}}"
-      VPN_HASH=$(htpasswd -B -n -b admin "$VPN_PASS" | cut -d ":" -f 2)
-      AG_HASH=$(htpasswd -B -n -b admin "$AG_PASS" | cut -d ":" -f 2)
-      ESCAPED_VPN_HASH=$(echo "$VPN_HASH" | sed "s/\\$/\\$\\/g")
-      sed -i "s|VPN_HASH_PLACEHOLDER|$ESCAPED_VPN_HASH|g" /root/docker-compose.yml
-      sed -i "s|ADGUARD_HASH_PLACEHOLDER|$AG_HASH|g" /root/adguard/conf/AdGuardHome.yaml
-      sed -i "s|session_ttl: 0s|session_ttl: 720h|g" /root/adguard/conf/AdGuardHome.yaml
-      cat <<EOF > /etc/sysctl.d/99-hardened.conf
-      net.ipv4.conf.all.rp_filter = 1
-      net.ipv4.conf.default.rp_filter = 1
-      net.ipv4.icmp_echo_ignore_broadcasts = 1
-      net.ipv4.conf.all.accept_source_route = 0
-      net.ipv4.conf.default.accept_source_route = 0
-      net.ipv4.tcp_syncookies = 1
       EOF
-      sysctl -p /etc/sysctl.d/99-hardened.conf
+
+      # 5. Geo-Blocking & Firewall
       ipset create allowed_country hash:net
       URL="http://www.ipdeny.com/ipblocks/data/countries/{{COUNTRY}}.zone"
       curl -s $URL | while read line; do ipset add allowed_country $line; done
       ufw default deny incoming
-      ufw allow ssh
+      ufw allow ssh; ufw allow 80/tcp; ufw allow 443/tcp
       ufw insert 1 allow from set:allowed_country to any port 51820 proto udp
-      ufw insert 1 allow from set:allowed_country to any port 80 proto tcp
-      ufw insert 1 allow from set:allowed_country to any port 443 proto tcp
       echo "y" | ufw enable
+
+      # 6. Launch
       systemctl enable --now docker fail2ban unattended-upgrades
       cd /root && docker compose up -d
 
@@ -217,11 +202,13 @@ runcmd:
 '
 
 # 5. Fill Template
-$finalContent = $template.Replace("{{ADGUARD_CONTENT}}", $indentedAg)
-$finalContent = $finalContent.Replace("{{VPN_PASS}}", $vpnPassword)
+$finalContent = $template.Replace("{{VPN_PASS}}", $vpnPassword)
 $finalContent = $finalContent.Replace("{{AG_PASS}}", $agPassword)
+$finalContent = $finalContent.Replace("{{AG_USER}}", $ag_user)
 $finalContent = $finalContent.Replace("{{COUNTRY}}", $country.ToLower())
+$finalContent = $finalContent.Replace("{{UPSTREAM_DNS}}", $dnsBlock.TrimEnd())
+$finalContent = $finalContent.Replace("{{BLOCKLISTS}}", $filterBlock.TrimEnd())
 
 # Write to file
 [System.IO.File]::WriteAllText($OUTPUT_FILE, $finalContent, [System.Text.Encoding]::ASCII)
-Write-Host "SUCCESS: Professional config '$OUTPUT_FILE' created." -ForegroundColor Green
+Write-Host "SUCCESS: Robust Professional config '$OUTPUT_FILE' created." -ForegroundColor Green

@@ -125,7 +125,26 @@ if ($choice -eq "y") {
     & "$SCRIPT_DIR\automation\configure_https.ps1" -ServerIp $ServerIp
     
     Write-Host ""
-    Write-Host "Deployment finished successfully!" -ForegroundColor Green
+    Write-Host "[*] Applying Security Lockdown (Restricting access to your IP)..." -ForegroundColor Cyan
+    $ADMIN_IP = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
+    $configContent = Get-Content $CONFIG_FILE -Raw
+    $RESOURCE_GROUP = "" # Logic to get RG from config
+    if ($configContent -match 'resource_group:\s*["'']?([^"'']+)["'']?') { $RESOURCE_GROUP = $Matches[1].Trim() }
+    $VM_NAME = ""
+    if ($configContent -match 'vm_name:\s*["'']?([^"'']+)["'']?') { $VM_NAME = $Matches[1].Trim() }
+    $NSG_NAME = "${VM_NAME}NSG"
+
+    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowSSH --source-address-prefixes $ADMIN_IP --output none
+    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes $ADMIN_IP --output none
+    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes $ADMIN_IP --output none
+
+    Write-Host "Deployment finished successfully! All dashboards are now HTTPS protected and IP-locked." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "--- MAINTENANCE NOTICE ---" -ForegroundColor Yellow
+    Write-Host "SSL certificates expire every 90 days. Since ports are locked to your IP," -ForegroundColor Gray
+    Write-Host "automatic renewal might fail. To renew, simply run:" -ForegroundColor Gray
+    Write-Host "powershell automation/renew_ssl.ps1" -ForegroundColor Cyan
+    Write-Host "--------------------------" -ForegroundColor Yellow
 } else {
     Write-Host "Setup paused. You can run deployment later with: powershell automation/azure_deploy.ps1" -ForegroundColor Yellow
 }

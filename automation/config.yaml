@@ -3,7 +3,7 @@
 # Azure Infrastructure Settings
 azure:
   resource_group: "VPN-RS"
-  location: "germanywestcentral"
+  location: "northeurope"
   vm_name: "VPN-VM"
   vm_size: "Standard_B1s"
   admin_user: "azureuser"
@@ -11,7 +11,7 @@ azure:
 
 # Server Connection Info
 server:
-  ip: "135.220.229.16"
+  ip: "0.0.0.0"
   ssh_key_path: "~/.ssh/id_rsa"
 
 # AdGuard Home Settings
@@ -22,4 +22,3 @@ adguard:
     - "tls://1.1.1.1"
   blocklists:
     - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
-
