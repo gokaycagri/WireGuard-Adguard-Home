@@ -4,9 +4,9 @@
 set -e
 
 # --- SETTINGS ---
-RESOURCE_GROUP="MyVPN_Group"
-LOCATION="northeurope"     # One of the cheapest/closest regions
-VM_NAME="MyVPN-VM"
+RESOURCE_GROUP="VPN_RG"
+LOCATION="germanywestcentral"     # One of the cheapest/closest regions
+VM_NAME="VPN-VM"
 VM_IMAGE="Ubuntu2404"      # Ubuntu 24.04 LTS
 VM_SIZE="Standard_B1s"     # Recommended size
 ADMIN_USER="azureuser"
