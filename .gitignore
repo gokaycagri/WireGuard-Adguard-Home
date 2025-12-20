@@ -1,0 +1,17 @@
+# Generated Files
+final_cloud_init.yaml
+*.tmp
+*.bak
+*.log
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Azure
+.azure/
+az_command_logs/

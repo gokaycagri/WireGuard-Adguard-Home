@@ -1,0 +1,33 @@
+# VPN & AdGuard Otomasyon Ayarları
+
+# Sunucu Bağlantı Bilgileri (Doğrulama scripti için)
+server:
+  ip: "4.245.190.51" # Azure VM IP
+  user: "azureuser"
+  ssh_key_path: "~/.ssh/id_rsa"
+
+# WireGuard Ayarları (wg-easy)
+wireguard:
+  # Web Arayüzü Şifresi (Docker loglarında hash olarak görünecek, buraya düz metin yazmayın)
+  # Varsayılan Hash (password): $2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC
+  # Kendi hash'inizi üretmek için script size yardımcı olacak.
+  password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC" 
+  host: "auto" # "auto" bırakırsanız sunucu IP'sini bulmaya çalışır. Azure'da Public IP değişmezse statik yazılabilir.
+
+# AdGuard Home Ayarları
+adguard:
+  # Yönetim Paneli Kullanıcısı
+  username: "admin"
+  # Yönetim Paneli Şifresi (BCrypt Hash formatında olmalı)
+  # Varsayılan (password): $2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC
+  password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC"
+  
+  # Kullanılacak Upstream DNS Sunucuları (Güvenlik ve Hız için)
+  upstream_dns:
+    - "https://dns.cloudflare.com/dns-query"
+    - "tls://1.1.1.1"
+    - "tls://8.8.8.8"
+
+  # Engelleme Listeleri (Blocklists)
+  blocklists:
+    - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt" # AdGuard DNS filter

@@ -1,0 +1,22 @@
+# AdGuard Home Ready Configuration
+bind_host: 0.0.0.0
+bind_port: 8080 # Admin panel port
+users:
+  - name: {{ADGUARD_USER}}
+    password: {{ADGUARD_PASS_HASH}}
+
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  port: 53
+  upstream_dns:
+{{UPSTREAM_DNS_BLOCK}}
+  protection_enabled: true
+  filtering_enabled: true
+  blocking_mode: default
+
+filters:
+{{BLOCKLISTS_BLOCK}}
+
+# Skip setup wizard
+setup_done: true
