@@ -1,14 +1,15 @@
 azure:
-  resource_group: "VPN-RS"
+  resource_group: "VA"
   location: "northeurope"
   vm_name: "VPN-VM"
   vm_size: "Standard_B1s"
-  admin_user: "azureuser"
+  admin_user: ""
   allowed_country: "TR"
+  vnet_name: ""
+  subnet_name: ""
 server:
-  ip: "134.149.56.74"
+  ip: "0.0.0.0"
 adguard:
   username: "admin"
   upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
   blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
-

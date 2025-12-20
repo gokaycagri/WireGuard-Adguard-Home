@@ -13,6 +13,11 @@ $VM      = $config.azure.vm_name
 $User    = $config.azure.admin_user
 $Cloud   = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
 
+if (!$RG -or !$Loc -or !$VM -or !$User) {
+    Show-Error "Critical variables missing in config.yaml! Please run setup.ps1 again."
+    exit 1
+}
+
 # 2. Get Admin IP
 Show-Step "Detecting your Public IP..."
 $AdminIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
@@ -24,6 +29,15 @@ az group create --name $RG --location $Loc --output none
 
 # 4. Create VM
 Show-Step "Provisioning VM ($VM)..."
+$vnetArgs = @()
+if ($config.azure.vnet_name) {
+    Show-Step "Using existing VNet: $($config.azure.vnet_name)"
+    $vnetArgs += "--vnet-name", $config.azure.vnet_name
+    if ($config.azure.subnet_name) {
+        $vnetArgs += "--subnet", $config.azure.subnet_name
+    }
+}
+
 az vm create `
   --resource-group $RG `
   --name $VM `
@@ -34,6 +48,7 @@ az vm create `
   --public-ip-sku Standard `
   --public-ip-address-allocation static `
   --custom-data $Cloud `
+  @vnetArgs `
   --output none
 
 # 5. Network Security

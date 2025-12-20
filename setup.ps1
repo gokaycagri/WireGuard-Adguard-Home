@@ -1,4 +1,4 @@
-# Professional VPN Setup CLI - Beautified
+# Professional VPN Setup CLI - Robust Lockdown
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 . "$SCRIPT_DIR\automation\lib.ps1"
@@ -22,8 +22,17 @@ if (!$VM) { $VM = "VPN-VM" }
 $Region  = Read-Host "  Enter Azure Region [northeurope]"
 if (!$Region) { $Region = "northeurope" }
 
+$adminUser = Read-Host "  Enter Admin Username [azureuser]"
+if (!$adminUser) { $adminUser = "azureuser" }
+
 $Country = Read-Host "  Enter Your Country Code (e.g. TR, US) [TR]"
 if (!$Country) { $Country = "TR" }
+
+$VNet = Read-Host "  Enter Existing VNet Name (Leave empty to create new)"
+$Subnet = ""
+if ($VNet) {
+    $Subnet = Read-Host "  Enter Subnet Name for this VNet"
+}
 
 Write-Host "`n  --- Security ---" -ForegroundColor Yellow
 $VpnPass = Read-Host "  Set WireGuard Web Password"
@@ -37,8 +46,10 @@ azure:
   location: "$Region"
   vm_name: "$VM"
   vm_size: "Standard_B1s"
-  admin_user: "azureuser"
+  admin_user: "$adminUser"
   allowed_country: "$($Country.ToUpper())"
+  vnet_name: "$VNet"
+  subnet_name: "$Subnet"
 server:
   ip: "0.0.0.0"
 adguard:
@@ -59,8 +70,11 @@ if ($choice -eq "y") {
     Show-Header "DEPLOYMENT STARTED"
     & "$SCRIPT_DIR\automation\azure_deploy.ps1"
     
+    # Reload config to get the Server IP
     $config = Get-VpnConfig
     $ServerIp = $config.server.ip
+    $RG = $config.azure.resource_group
+    $VM = $config.azure.vm_name
 
     Show-Step "Waiting for server initialization (60s)..."
     Start-Sleep -Seconds 60
@@ -70,17 +84,31 @@ if ($choice -eq "y") {
     
     Show-Step "Applying security lockdown (IP restricted access)..."
     $AdminIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
-    $NSG = "$($config.azure.vm_name)NSG"
-    $RG  = $config.azure.resource_group
     
-    az network nsg rule update -g $RG --nsg-name $NSG --name AllowSSH --source-address-prefixes $AdminIp --output none
-    az network nsg rule update -g $RG --nsg-name $NSG --name AllowHTTP --source-address-prefixes $AdminIp --output none
-    az network nsg rule update -g $RG --nsg-name $NSG --name AllowHTTPS --source-address-prefixes $AdminIp --output none
+    # Dynamically find the NSG Name from VM details
+    Show-Step "Detecting Network Security Group name..."
+    $nicId = az vm show -g $RG -n $VM --query "networkProfile.networkInterfaces[0].id" -o tsv
+    $nsgId = az network nic show --id $nicId --query "networkSecurityGroup.id" -o tsv
+    $nsgName = ($nsgId -split "/")[-1]
+
+    if ($nsgName) {
+        Show-Step "Locking down NSG: $nsgName"
+        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
+        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
+        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
+        Show-Success "Firewall restricted to $AdminIp."
+    } else {
+        Show-Error "Could not detect NSG name. Management ports remain open."
+    }
 
     Show-Success "Installation Complete!"
     Write-Host "`nDashboards are now accessible at:" -ForegroundColor Cyan
     Write-Host "VPN:     https://vpn.$ServerIp.sslip.io" -ForegroundColor White
     Write-Host "AdGuard: https://adguard.$ServerIp.sslip.io" -ForegroundColor White
+    
+    Write-Host "`n--- MAINTENANCE NOTICE ---" -ForegroundColor Yellow
+    Write-Host "SSL certificates expire every 90 days. Run:" -ForegroundColor Gray
+    Write-Host "powershell automation/renew_ssl.ps1" -ForegroundColor Cyan
 } else {
     Write-Host "`nSetup paused. Run 'automation/azure_deploy.ps1' to resume." -ForegroundColor Yellow
 }
