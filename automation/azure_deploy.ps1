@@ -62,7 +62,7 @@ az network nsg rule create -g $RG --nsg-name $NSG --name AllowVPN --priority 101
 # Admin-Only Ports
 az network nsg rule create -g $RG --nsg-name $NSG --name AllowSSH --priority 1000 --protocol Tcp --destination-port-ranges 22 --access Allow --source-address-prefixes $AdminIp --output none
 az network nsg rule create -g $RG --nsg-name $NSG --name AllowHTTP --priority 1020 --protocol Tcp --destination-port-ranges 80 --access Allow --source-address-prefixes "*" --output none
-az network nsg rule create -g $RG --nsg-name $NSG --name AllowHTTPS --priority 1030 --protocol Tcp --destination-port-ranges 443 --access Allow --source-address-prefixes "*" --output none
+az network nsg rule create -g $RG --nsg-name $NSG --name AllowHTTPS --priority 1030 --protocol Tcp --destination-port-ranges 443 --access Allow --source-address-prefixes $AdminIp --output none
 
 # 6. Finalize
 $Ip = az vm show -g $RG -n $VM --show-details --query publicIps --output tsv

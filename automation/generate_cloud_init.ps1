@@ -23,7 +23,7 @@ $template = @'
 #cloud-config
 package_update: true
 package_upgrade: true
-packages: [docker.io, docker-compose-v2, curl, ufw, apache2-utils, fail2ban, unattended-upgrades, ipset]
+packages: [docker.io, docker-compose-v2, curl, ufw, apache2-utils, fail2ban, unattended-upgrades]
 
 write_files:
   - path: /etc/fail2ban/jail.local
@@ -34,13 +34,37 @@ write_files:
       maxretry = 3
       bantime = 1h
 
-  - path: /root/setup.sh
-    permissions: "0700"
-    content: |
-      #!/bin/bash
-      set -e
-      
-      # 1. Generate Hashes
+    - path: /root/setup.sh
+
+      permissions: "0700"
+
+      content: |
+
+        #!/bin/bash
+
+        set -e
+
+  
+
+        # 0. RAM Optimization (Swap File)
+
+        if [ ! -f /swapfile ]; then
+
+          fallocate -l 2G /swapfile
+
+          chmod 600 /swapfile
+
+          mkswap /swapfile
+
+          swapon /swapfile
+
+          echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+
+        fi
+
+  
+
+        # 1. Generate Hashes
       VPN_PASS="{{VPN_PASS}}"
       AG_PASS="{{AG_PASS}}"
       
@@ -108,9 +132,10 @@ write_files:
             - WG_HOST=auto
             - PASSWORD_HASH=$ESCAPED_VPN_HASH
             - WG_DEFAULT_DNS=172.20.0.53
-            - WG_ALLOWED_IPS=0.0.0.0/0
+            - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
             - WG_MTU=1420
             - WG_PERSISTENT_KEEPALIVE=25
+            - WG_DEFAULT_ADDRESS=10.8.0.x
           volumes: ["./wg-easy:/etc/wireguard"]
           ports: ["51820:51820/udp"]
           expose: ["51821"]
@@ -152,12 +177,13 @@ write_files:
       EOF
       sysctl -p /etc/sysctl.d/99-hardened.conf
 
-      # 6. Firewall
-      ipset create allowed_country hash:net
-      URL="http://www.ipdeny.com/ipblocks/data/countries/{{COUNTRY}}.zone"
-      curl -s $URL | while read line; do ipset add allowed_country $line; done
-      ufw allow ssh; ufw allow 80/tcp; ufw allow 443/tcp
-      ufw insert 1 allow from set:allowed_country to any port 51820 proto udp
+      # 4. Firewall (UFW)
+      ufw default deny incoming
+      ufw allow ssh
+      ufw allow 80/tcp
+      ufw allow 443/tcp
+      ufw allow 51820/udp
+      
       echo "y" | ufw enable
       systemctl enable --now docker fail2ban unattended-upgrades
       cd /root && docker compose up -d
@@ -167,7 +193,7 @@ runcmd:
 '@
 
 # 4. Inject & Write
-$final = $template.Replace("{{VPN_PASS}}", $vpnPassword).Replace("{{AG_PASS}}", $agPassword).Replace("{{AG_USER}}", $ag_user).Replace("{{COUNTRY}}", $country.ToLower())
+$final = $template.Replace("{{VPN_PASS}}", $vpnPassword).Replace("{{AG_PASS}}", $agPassword).Replace("{{AG_USER}}", $ag_user)
 $outputPath = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
 [System.IO.File]::WriteAllText($outputPath, $final, [System.Text.Encoding]::ASCII)
 Show-Success "Professional configuration generated."

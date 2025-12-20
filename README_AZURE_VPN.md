@@ -1,68 +1,51 @@
-# Azure WireGuard & AdGuard Home VPN (Pro Edition)
+# Hardened Azure VPN with AdGuard Home
 
-Deploy a hardened, automated, and secure VPN server on Microsoft Azure in minutes.
+A professional, automated deployment of WireGuard and AdGuard Home on Microsoft Azure.
 
 ## Features
-*   **One-Click Setup:** Unified interactive CLI for all operations.
-*   **Security Hardened:** Kernel-level hardening, Fail2Ban, and IP-locked management.
-*   **Geo-Blocking:** Restrict server access to your specific country (e.g., TR, US).
-*   **Auto-Maintenance:** Watchtower automatically keeps your VPN and DNS software updated.
-*   **Full HTTPS:** Automatic SSL for all web interfaces using `sslip.io`.
+*   **Performance:** Optimized MTU and Keepalive settings for stable mobile connections.
+*   **Security:** OS hardening, Fail2Ban, and IP-restricted management ports.
+*   **Stability:** Automatic 2GB Swap space for reliable operation on small VMs.
+*   **Flexibility:** Deploy into new or existing Azure VNets.
+*   **Privacy:** Ad-blocking DNS integration with encrypted upstream queries.
 
 ## Prerequisites
-Before starting, ensure your system is ready:
+Ensure your local machine is ready:
 ```powershell
 powershell automation/check_requirements.ps1
 ```
-*   **Azure CLI:** Installed and logged in (`az login`).
-*   **SSH Key:** Generated at `~/.ssh/id_rsa.pub`.
+*   **Azure CLI:** Logged in via `az login`.
+*   **SSH Key:** Public key found at `~/.ssh/id_rsa.pub`.
 
-## Deployment Guide
+## Installation
 
-### 1. Launch the Setup
-Run the interactive setup script from the project root:
-```powershell
-powershell ./setup.ps1
-```
+1.  **Start the Setup:**
+    ```powershell
+    powershell ./setup.ps1
+    ```
+2.  **Follow the Prompts:** Enter your Resource Group, VM Name, and desired Region.
+3.  **Network Setup:** Specify an existing VNet or leave blank to create a new one.
+4.  **Dashboards:** Set your passwords for the Web UIs.
+5.  **Deployment:** Confirm with `y` to begin the automated process.
 
-### 2. Enter Configuration
-The script will prompt you for:
-*   **Resource Group & VM Name:** Customize your Azure resource names.
-*   **Azure Region:** Choose the closest location (e.g., `northeurope`).
-*   **Allowed Country:** Enter your ISO country code (e.g., `TR`) to block all other global traffic.
-*   **Passwords:** Set unique passwords for the WireGuard and AdGuard dashboards.
-
-### 3. Automatic Deployment
-Confirm deployment by entering `y`. The script will:
-1.  Provision the Azure VM.
-2.  Lock SSH and Web access to your current Public IP.
-3.  Configure HTTPS and SSL certificates automatically.
-
-## Accessing Your VPN
-Once the script finishes, it will display your secure links:
-*   **AdGuard Home:** `https://adguard.<SERVER_IP>.sslip.io`
-*   **WireGuard UI:** `https://vpn.<SERVER_IP>.sslip.io`
-
-**Credentials:**
-*   **User:** `admin` (AdGuard)
-*   **Password:** *The passwords you set during setup.*
+## Access
+Once complete, use these secure links:
+*   **AdGuard Home:** `https://adguard.<IP>.sslip.io` (User: `admin`)
+*   **WireGuard UI:** `https://vpn.<IP>.sslip.io`
 
 ## Maintenance
 
-### SSL Certificate Renewal
-SSL certificates are automatically managed by Caddy but require port 80 to be open. Since we lock this port to your IP for security, you should run this command every ~80 days (or if you see SSL errors):
+### SSL Renewal
+Every ~80 days, run this to renew certificates (since ports are IP-locked):
 ```powershell
 powershell automation/renew_ssl.ps1
 ```
 
-### Verify Status
-Check if services are running:
-
-### Deleting the System
-To remove all Azure resources and stop billing:
+### Full Destruction
+To delete all Azure resources:
 ```powershell
 powershell automation/azure_destroy.ps1
 ```
 
-## Security Warning
-The management ports (SSH, HTTPS) are **locked to your specific IP address** at the time of deployment. If your home/office IP changes, you will need to update the Network Security Group (NSG) in the Azure Portal to regain access.
+## Troubleshooting
+If you cannot access the dashboards, ensure your **current Public IP** matches the one recorded during deployment. You can update the NSG rules in the Azure Portal if your local IP has changed.

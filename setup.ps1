@@ -25,9 +25,6 @@ if (!$Region) { $Region = "northeurope" }
 $adminUser = Read-Host "  Enter Admin Username [azureuser]"
 if (!$adminUser) { $adminUser = "azureuser" }
 
-$Country = Read-Host "  Enter Your Country Code (e.g. TR, US) [TR]"
-if (!$Country) { $Country = "TR" }
-
 $VNet = Read-Host "  Enter Existing VNet Name (Leave empty to create new)"
 $Subnet = ""
 if ($VNet) {
@@ -47,7 +44,6 @@ azure:
   vm_name: "$VM"
   vm_size: "Standard_B1s"
   admin_user: "$adminUser"
-  allowed_country: "$($Country.ToUpper())"
   vnet_name: "$VNet"
   subnet_name: "$Subnet"
 server:

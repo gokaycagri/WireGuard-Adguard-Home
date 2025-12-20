@@ -1,10 +1,9 @@
 azure:
-  resource_group: "VA"
+  resource_group: "VPN-RS"
   location: "northeurope"
   vm_name: "VPN-VM"
   vm_size: "Standard_B1s"
-  admin_user: ""
-  allowed_country: "TR"
+  admin_user: "azureuser"
   vnet_name: ""
   subnet_name: ""
 server:
