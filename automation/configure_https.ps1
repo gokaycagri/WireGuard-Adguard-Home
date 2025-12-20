@@ -1,4 +1,4 @@
-# HTTPS Configuration Script
+# HTTPS Configuration Script - Robust Version
 # Configures Caddy using IP-based Magic DNS (sslip.io).
 
 param (
@@ -7,41 +7,41 @@ param (
 
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
-$ROOT_DIR = "$SCRIPT_DIR\.."
+. "$SCRIPT_DIR\lib.ps1"
 
-if (-not $ServerIp) {
-    # Try reading from config file
-    $configFile = "$ROOT_DIR\automation\config.yaml"
-    if (Test-Path $configFile) {
-         $content = Get-Content $configFile -Raw
-         if ($content -match 'ip:\s*["'']?([0-9\.]+)["'']?') {
-            $ServerIp = $Matches[1].Trim()
-         }
-    }
+if (!$ServerIp) {
+    $config = Get-VpnConfig
+    $ServerIp = $config.server.ip
 }
 
-if (-not $ServerIp) {
-    $ServerIp = Read-Host "Please enter the Server IP address"
-}
+if (!$ServerIp) { $ServerIp = Read-Host "  Please enter the Server IP address" }
 
-Write-Host "--- Configuring HTTPS Settings ($ServerIp) ---" -ForegroundColor Cyan
-Write-Host "Creating domains:"
-Write-Host "AdGuard: adguard-$ServerIp.sslip.io"
-Write-Host "VPN:     vpn-$ServerIp.sslip.io"
+Show-Header "CONFIGURING HTTPS"
+Show-Step "Target: $ServerIp"
 
-# Edit Caddyfile via SSH
 $domainSuffix = "$ServerIp.sslip.io"
-# Execute in /root with sudo
-$cmd = "sudo bash -c 'sed -i ""s/DOMAIN_PLACEHOLDER/$domainSuffix/g"" /root/Caddyfile && cd /root && docker compose restart caddy'"
 
-Write-Host "Connecting to server and applying settings..." -ForegroundColor Yellow
-ssh -o StrictHostKeyChecking=no azureuser@$ServerIp $cmd
+# Smart Command: Wait for file availability then edit and restart
+$cmd = @"
+for i in {1..30}; do
+    if [ -f /root/Caddyfile ]; then
+        echo 'Found Caddyfile, applying domains...'
+        sed -i "s/DOMAIN_PLACEHOLDER/$domainSuffix/g" /root/Caddyfile
+        cd /root && docker compose restart caddy
+        exit 0
+    fi
+    echo 'Waiting for Caddyfile to be created by system setup...'
+    sleep 10
+done
+echo 'ERROR: Timeout waiting for Caddyfile.'
+exit 1
+"@
+
+Show-Step "Syncing domains (adguard.$domainSuffix)..."
+ssh -o StrictHostKeyChecking=no azureuser@$ServerIp "sudo bash -c '$cmd'"
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "HTTPS Successfully Enabled! [OK]" -ForegroundColor Green
-    Write-Host "Addresses:"
-    Write-Host "AdGuard: https://adguard.$ServerIp.sslip.io"
-    Write-Host "VPN:     https://vpn.$ServerIp.sslip.io"
+    Show-Success "HTTPS Enabled successfully."
 } else {
-    Write-Host "ERROR: Could not apply HTTPS settings." -ForegroundColor Red
+    Show-Error "HTTPS configuration failed."
 }

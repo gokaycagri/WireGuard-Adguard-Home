@@ -1,6 +1,3 @@
-# VPN & AdGuard Automation Settings
-
-# Azure Infrastructure Settings
 azure:
   resource_group: "VPN-RS"
   location: "northeurope"
@@ -8,17 +5,10 @@ azure:
   vm_size: "Standard_B1s"
   admin_user: "azureuser"
   allowed_country: "TR"
-
-# Server Connection Info
 server:
-  ip: "0.0.0.0"
-  ssh_key_path: "~/.ssh/id_rsa"
-
-# AdGuard Home Settings
+  ip: "134.149.56.74"
 adguard:
   username: "admin"
-  upstream_dns:
-    - "https://dns.cloudflare.com/dns-query"
-    - "tls://1.1.1.1"
-  blocklists:
-    - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+  upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
+  blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
+

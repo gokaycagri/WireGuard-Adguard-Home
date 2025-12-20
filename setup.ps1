@@ -1,150 +1,86 @@
-# Professional VPN Setup CLI
+# Professional VPN Setup CLI - Beautified
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
-$CONFIG_FILE = "$SCRIPT_DIR\automation\config.yaml"
+. "$SCRIPT_DIR\automation\lib.ps1"
 
 Clear-Host
-Write-Host "===============================================" -ForegroundColor Cyan
-Write-Host "   AZURE WIREGUARD & ADGUARD HOME SETUP CLI" -ForegroundColor Cyan
-Write-Host "===============================================" -ForegroundColor Cyan
-Write-Host ""
+Show-Header "AZURE VPN & ADGUARD HOME INSTALLER"
 
 # 1. Check Requirements
-Write-Host "[*] Checking system requirements..." -ForegroundColor Gray
+Show-Step "Verifying system requirements..."
 & "$SCRIPT_DIR\automation\check_requirements.ps1"
-Write-Host ""
 
 # 2. Collect Information
-Write-Host "--- Infrastructure Settings ---" -ForegroundColor Yellow
+Show-Header "CONFIGURATION"
 
-# Resource Group
-$currentRG = "MyVPN_Group"
-$rg = Read-Host "Enter Azure Resource Group Name (default: $currentRG)"
-if ([string]::IsNullOrWhiteSpace($rg)) { $rg = $currentRG }
+$RG      = Read-Host "  Enter Resource Group Name [VPN-RS]"
+if (!$RG) { $RG = "VPN-RS" }
 
-# VM Name
-$currentVMName = "MyVPN-VM"
-$vmName = Read-Host "Enter VM Name (default: $currentVMName)"
-if ([string]::IsNullOrWhiteSpace($vmName)) { $vmName = $currentVMName }
+$VM      = Read-Host "  Enter Virtual Machine Name [VPN-VM]"
+if (!$VM) { $VM = "VPN-VM" }
 
-# Azure Region
-$currentRegion = "northeurope"
-$region = Read-Host "Enter Azure Region (default: $currentRegion)"
-if ([string]::IsNullOrWhiteSpace($region)) { $region = $currentRegion }
+$Region  = Read-Host "  Enter Azure Region [northeurope]"
+if (!$Region) { $Region = "northeurope" }
 
-# VM Size
-$currentSize = "Standard_B1s"
-$size = Read-Host "Enter VM Size (default: $currentSize)"
-if ([string]::IsNullOrWhiteSpace($size)) { $size = $currentSize }
+$Country = Read-Host "  Enter Your Country Code (e.g. TR, US) [TR]"
+if (!$Country) { $Country = "TR" }
 
-# Admin User
-$currentAdmin = "azureuser"
-$adminUser = Read-Host "Enter Admin Username (default: $currentAdmin)"
-if ([string]::IsNullOrWhiteSpace($adminUser)) { $adminUser = $currentAdmin }
+Write-Host "`n  --- Security ---" -ForegroundColor Yellow
+$VpnPass = Read-Host "  Set WireGuard Web Password"
+$AgPass  = Read-Host "  Set AdGuard Admin Password"
 
-# Allowed Country
-$currentCountry = "TR"
-$country = Read-Host "Enter Allowed Country Code for Firewall (e.g. TR, US, DE) (default: $currentCountry)"
-if ([string]::IsNullOrWhiteSpace($country)) { $country = $currentCountry }
-
-# Passwords
-Write-Host ""
-Write-Host "--- Dashboard Passwords ---" -ForegroundColor Yellow
-$vpnPass = Read-Host "Set WireGuard VPN Password"
-if ([string]::IsNullOrWhiteSpace($vpnPass)) { $vpnPass = "password" }
-
-$agPass = Read-Host "Set AdGuard Home Password"
-if ([string]::IsNullOrWhiteSpace($agPass)) { $agPass = "password" }
-
-# 3. Update config.yaml
-Write-Host ""
-Write-Host "[*] Updating configuration file..." -ForegroundColor Cyan
-
+# 3. Save Config
+Show-Step "Saving settings to config.yaml..."
 $configTemplate = @"
-# VPN & AdGuard Automation Settings
-
-# Azure Infrastructure Settings
 azure:
-  resource_group: "$rg"
-  location: "$region"
-  vm_name: "$vmName"
-  vm_size: "$size"
-  admin_user: "$adminUser"
-  allowed_country: "$country"
-
-# Server Connection Info
+  resource_group: "$RG"
+  location: "$Region"
+  vm_name: "$VM"
+  vm_size: "Standard_B1s"
+  admin_user: "azureuser"
+  allowed_country: "$($Country.ToUpper())"
 server:
   ip: "0.0.0.0"
-  ssh_key_path: "~/.ssh/id_rsa"
-
-# AdGuard Home Settings
 adguard:
   username: "admin"
-  upstream_dns:
-    - "https://dns.cloudflare.com/dns-query"
-    - "tls://1.1.1.1"
-  blocklists:
-    - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+  upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
+  blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
 "@
-
-Set-Content -Path $CONFIG_FILE -Value $configTemplate
+Set-Content -Path "$SCRIPT_DIR\automation\config.yaml" -Value $configTemplate
 
 # 4. Generate Cloud-Init
-Write-Host "[*] Generating deployment files..." -ForegroundColor Cyan
-$inputPass = "$vpnPass`n$agPass"
-$inputPass | & "$SCRIPT_DIR\automation\generate_cloud_init.ps1" | Out-Null
+Show-Step "Generating server configuration..."
+"$VpnPass`n$AgPass" | & "$SCRIPT_DIR\automation\generate_cloud_init.ps1" | Out-Null
+Show-Success "Deployment files ready."
 
-Write-Host ""
-Write-Host "===============================================" -ForegroundColor Green
-Write-Host "   CONFIGURATION READY!" -ForegroundColor Green
-Write-Host "===============================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Resource Group: $rg"
-Write-Host "VM Name:        $vmName"
-Write-Host "Region:         $region"
-Write-Host "VM Size:        $size"
-Write-Host "Admin User:     $adminUser"
-Write-Host "Country:        $country"
-Write-Host ""
-
-$choice = Read-Host "Do you want to start Azure Deployment now? (y/n)"
+# 5. Deployment
+$choice = Read-Host "`nDo you want to deploy to Azure now? (y/n)"
 if ($choice -eq "y") {
-    Write-Host "[!] Starting Deployment... This will take a few minutes." -ForegroundColor Yellow
+    Show-Header "DEPLOYMENT STARTED"
     & "$SCRIPT_DIR\automation\azure_deploy.ps1"
     
-    # Retrieving IP after deployment
-    $configContent = Get-Content $CONFIG_FILE -Raw
-    if ($configContent -match 'ip:\s*["'']?([0-9\.]+)["'']?') {
-        $ServerIp = $Matches[1].Trim()
-    }
+    $config = Get-VpnConfig
+    $ServerIp = $config.server.ip
 
-    Write-Host ""
-    Write-Host "[!] Finalizing HTTPS Setup..." -ForegroundColor Yellow
-    Write-Host "Waiting 60 seconds for server initialization..."
+    Show-Step "Waiting for server initialization (60s)..."
     Start-Sleep -Seconds 60
+    
+    Show-Step "Finalizing HTTPS..."
     & "$SCRIPT_DIR\automation\configure_https.ps1" -ServerIp $ServerIp
     
-    Write-Host ""
-    Write-Host "[*] Applying Security Lockdown (Restricting access to your IP)..." -ForegroundColor Cyan
-    $ADMIN_IP = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
-    $configContent = Get-Content $CONFIG_FILE -Raw
-    $RESOURCE_GROUP = "" # Logic to get RG from config
-    if ($configContent -match 'resource_group:\s*["'']?([^"'']+)["'']?') { $RESOURCE_GROUP = $Matches[1].Trim() }
-    $VM_NAME = ""
-    if ($configContent -match 'vm_name:\s*["'']?([^"'']+)["'']?') { $VM_NAME = $Matches[1].Trim() }
-    $NSG_NAME = "${VM_NAME}NSG"
+    Show-Step "Applying security lockdown (IP restricted access)..."
+    $AdminIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
+    $NSG = "$($config.azure.vm_name)NSG"
+    $RG  = $config.azure.resource_group
+    
+    az network nsg rule update -g $RG --nsg-name $NSG --name AllowSSH --source-address-prefixes $AdminIp --output none
+    az network nsg rule update -g $RG --nsg-name $NSG --name AllowHTTP --source-address-prefixes $AdminIp --output none
+    az network nsg rule update -g $RG --nsg-name $NSG --name AllowHTTPS --source-address-prefixes $AdminIp --output none
 
-    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowSSH --source-address-prefixes $ADMIN_IP --output none
-    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes $ADMIN_IP --output none
-    az network nsg rule update --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes $ADMIN_IP --output none
-
-    Write-Host "Deployment finished successfully! All dashboards are now HTTPS protected and IP-locked." -ForegroundColor Green
-    Write-Host ""
-    Write-Host "--- MAINTENANCE NOTICE ---" -ForegroundColor Yellow
-    Write-Host "SSL certificates expire every 90 days. Since ports are locked to your IP," -ForegroundColor Gray
-    Write-Host "automatic renewal might fail. To renew, simply run:" -ForegroundColor Gray
-    Write-Host "powershell automation/renew_ssl.ps1" -ForegroundColor Cyan
-    Write-Host "--------------------------" -ForegroundColor Yellow
+    Show-Success "Installation Complete!"
+    Write-Host "`nDashboards are now accessible at:" -ForegroundColor Cyan
+    Write-Host "VPN:     https://vpn.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "AdGuard: https://adguard.$ServerIp.sslip.io" -ForegroundColor White
 } else {
-    Write-Host "Setup paused. You can run deployment later with: powershell automation/azure_deploy.ps1" -ForegroundColor Yellow
+    Write-Host "`nSetup paused. Run 'automation/azure_deploy.ps1' to resume." -ForegroundColor Yellow
 }
