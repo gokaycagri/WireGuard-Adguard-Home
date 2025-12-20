@@ -1,44 +1,27 @@
-# Usage Guide (Quick Reference)
+# Quick Start Guide
 
-This project uses PowerShell scripts for all operations.
+This project is now managed via a single interactive command.
 
-## 1. Setup & Config
-Generate the cloud-init configuration file:
+### 1. Run the Setup
+Open PowerShell in the project root and run:
 ```powershell
-powershell automation/generate_cloud_init.ps1
+powershell ./setup.ps1
 ```
 
-## 2. Deploy Server
-Deploy the VM to Azure (Auto-detects your IP for security):
-```powershell
-powershell automation/azure_deploy.ps1
-```
-*IMPORTANT: Save the displayed IP address to 'automation/config.yaml'.*
+### 2. Follow the Prompts
+- Provide Azure resource names.
+- Provide your country code (e.g., TR).
+- Set your dashboard passwords.
+- Confirm deployment when asked.
 
-## 3. Enable HTTPS
-Configure SSL certificates and domains:
-```powershell
-powershell automation/configure_https.ps1
-```
-
-## 4. Verification
-Check server status:
-```powershell
-powershell automation/verify_deployment.ps1
-```
-
-## 5. Cleanup
-Delete all resources:
+### 3. Cleanup
+To delete all resources from Azure:
 ```powershell
 powershell automation/azure_destroy.ps1
 ```
 
 ---
-**Azure Cloud Shell Users:**
-Upload `final_cloud_init.yaml` and `automation/azure_deploy.sh` to Cloud Shell.
-Run:
-```bash
-chmod +x azure_deploy.sh
-./azure_deploy.sh
-```
-*(Note: Cloud Shell deployment does not support IP auto-locking for your local machine automatically.)*
+**Advanced Commands:**
+- Check Requirements: `powershell automation/check_requirements.ps1`
+- Verify Status: `powershell automation/verify_deployment.ps1`
+- Manual HTTPS Setup: `powershell automation/configure_https.ps1`

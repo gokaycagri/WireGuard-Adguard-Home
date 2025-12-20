@@ -1,69 +1,62 @@
-# Azure WireGuard & AdGuard Home VPN (Automated)
+# Azure WireGuard & AdGuard Home VPN (Pro Edition)
 
-A fully automated, secure, and ad-blocking VPN solution for Microsoft Azure.
+Deploy a hardened, automated, and secure VPN server on Microsoft Azure in minutes.
 
 ## Features
-*   **WireGuard:** Fast and modern VPN protocol.
-*   **AdGuard Home:** Network-wide ad blocking and tracking protection.
-*   **HTTPS (TLS):** Secure web access using Caddy and Let's Encrypt (via `sslip.io` Magic DNS).
-*   **Secure:** Management ports (SSH, Web UI) are automatically locked to your IP address.
-*   **Automated:** Deployed with a single PowerShell script.
+*   **One-Click Setup:** Unified interactive CLI for all operations.
+*   **Security Hardened:** Kernel-level hardening, Fail2Ban, and IP-locked management.
+*   **Geo-Blocking:** Restrict server access to your specific country (e.g., TR, US).
+*   **Auto-Maintenance:** Watchtower automatically keeps your VPN and DNS software updated.
+*   **Full HTTPS:** Automatic SSL for all web interfaces using `sslip.io`.
 
 ## Prerequisites
-1.  **Azure CLI:** Installed and logged in (`az login`).
-2.  **PowerShell:** Core or Windows PowerShell.
-3.  **OpenSSH:** Key pair generated (`~/.ssh/id_rsa`).
-
-## Quick Start
-
-### 1. Configuration
-Check `automation/config.yaml`. Default password is `password`.
-To generate the necessary cloud-init files:
+Before starting, ensure your system is ready:
 ```powershell
-powershell automation/generate_cloud_init.ps1
+powershell automation/check_requirements.ps1
+```
+*   **Azure CLI:** Installed and logged in (`az login`).
+*   **SSH Key:** Generated at `~/.ssh/id_rsa.pub`.
+
+## Deployment Guide
+
+### 1. Launch the Setup
+Run the interactive setup script from the project root:
+```powershell
+powershell ./setup.ps1
 ```
 
-### 2. Deploy to Azure
-This script creates the Resource Group, VM, and configures the Firewall (NSG).
-It automatically detects your Public IP to restrict management access.
-```powershell
-powershell automation/azure_deploy.ps1
-```
-*Take note of the Public IP address displayed at the end.*
+### 2. Enter Configuration
+The script will prompt you for:
+*   **Resource Group & VM Name:** Customize your Azure resource names.
+*   **Azure Region:** Choose the closest location (e.g., `northeurope`).
+*   **Allowed Country:** Enter your ISO country code (e.g., `TR`) to block all other global traffic.
+*   **Passwords:** Set unique passwords for the WireGuard and AdGuard dashboards.
 
-### 3. Update Config
-Update `automation/config.yaml` with the new Server IP address.
+### 3. Automatic Deployment
+Confirm deployment by entering `y`. The script will:
+1.  Provision the Azure VM.
+2.  Lock SSH and Web access to your current Public IP.
+3.  Configure HTTPS and SSL certificates automatically.
 
-### 4. Enable HTTPS
-Configure Caddy to serve the Web UIs securely over HTTPS.
-```powershell
-powershell automation/configure_https.ps1
-```
-
-### 5. Access
-Your services are now available at:
+## Accessing Your VPN
+Once the script finishes, it will display your secure links:
 *   **AdGuard Home:** `https://adguard.<SERVER_IP>.sslip.io`
 *   **WireGuard UI:** `https://vpn.<SERVER_IP>.sslip.io`
 
-**Default Credentials:**
+**Credentials:**
 *   **User:** `admin` (AdGuard)
-*   **Password:** `password` (Both)
+*   **Password:** *The passwords you set during setup.*
 
-## Maintenance
+## Management
 
-### Verify Status
-Check if services are running:
-```powershell
-powershell automation/verify_deployment.ps1
-```
+### Updating Settings
+If you want to change settings later, run `setup.ps1` again. It will update your local configuration.
 
-### Destroy System
-To delete everything (VM, IP, Disk, Resource Group):
+### Deleting the System
+To remove all Azure resources and stop billing:
 ```powershell
 powershell automation/azure_destroy.ps1
 ```
 
-## Security Note
-The deployment script locks SSH (22), HTTP (80), and HTTPS (443) ports to the IP address of the machine running the script.
-**If your IP changes**, you will lose access. You must manually update the Network Security Group (NSG) rules in the Azure Portal.
-The VPN port (UDP 51820) remains open globally to allow connections from anywhere.
+## Security Warning
+The management ports (SSH, HTTPS) are **locked to your specific IP address** at the time of deployment. If your home/office IP changes, you will need to update the Network Security Group (NSG) in the Azure Portal to regain access.

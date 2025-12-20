@@ -2,31 +2,24 @@
 
 # Azure Infrastructure Settings
 azure:
-  resource_group: "MyVPN_Group"
-  location: "northeurope"
-  vm_name: "MyVPN-VM"
+  resource_group: "VPN-RS"
+  location: "germanywestcentral"
+  vm_name: "VPN-VM"
   vm_size: "Standard_B1s"
   admin_user: "azureuser"
+  allowed_country: "TR"
 
-# Server Connection Info (Updated automatically or manually)
+# Server Connection Info
 server:
-  ip: "4.245.190.51"
+  ip: "135.220.229.16"
   ssh_key_path: "~/.ssh/id_rsa"
-
-# WireGuard Settings (wg-easy)
-wireguard:
-  # Default password: password
-  password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC" 
-  host: "auto"
 
 # AdGuard Home Settings
 adguard:
   username: "admin"
-  # Default password: password
-  password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC"
   upstream_dns:
     - "https://dns.cloudflare.com/dns-query"
     - "tls://1.1.1.1"
-    - "tls://8.8.8.8"
   blocklists:
     - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+
