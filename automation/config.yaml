@@ -1,33 +1,32 @@
-# VPN & AdGuard Otomasyon Ayarları
+# VPN & AdGuard Automation Settings
 
-# Sunucu Bağlantı Bilgileri (Doğrulama scripti için)
+# Azure Infrastructure Settings
+azure:
+  resource_group: "MyVPN_Group"
+  location: "northeurope"
+  vm_name: "MyVPN-VM"
+  vm_size: "Standard_B1s"
+  admin_user: "azureuser"
+
+# Server Connection Info (Updated automatically or manually)
 server:
-  ip: "4.245.190.51" # Azure VM IP
-  user: "azureuser"
+  ip: "4.245.190.51"
   ssh_key_path: "~/.ssh/id_rsa"
 
-# WireGuard Ayarları (wg-easy)
+# WireGuard Settings (wg-easy)
 wireguard:
-  # Web Arayüzü Şifresi (Docker loglarında hash olarak görünecek, buraya düz metin yazmayın)
-  # Varsayılan Hash (password): $2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC
-  # Kendi hash'inizi üretmek için script size yardımcı olacak.
+  # Default password: password
   password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC" 
-  host: "auto" # "auto" bırakırsanız sunucu IP'sini bulmaya çalışır. Azure'da Public IP değişmezse statik yazılabilir.
+  host: "auto"
 
-# AdGuard Home Ayarları
+# AdGuard Home Settings
 adguard:
-  # Yönetim Paneli Kullanıcısı
   username: "admin"
-  # Yönetim Paneli Şifresi (BCrypt Hash formatında olmalı)
-  # Varsayılan (password): $2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC
+  # Default password: password
   password_hash: "$2a$10$jIkDebpIV0bDeVJp6jtLSO3qlGcEV0Rz3EbEoU9AEWiHWJQGH5JoC"
-  
-  # Kullanılacak Upstream DNS Sunucuları (Güvenlik ve Hız için)
   upstream_dns:
     - "https://dns.cloudflare.com/dns-query"
     - "tls://1.1.1.1"
     - "tls://8.8.8.8"
-
-  # Engelleme Listeleri (Blocklists)
   blocklists:
-    - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt" # AdGuard DNS filter
+    - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
