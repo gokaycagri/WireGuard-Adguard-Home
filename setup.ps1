@@ -57,7 +57,7 @@ Set-Content -Path "$SCRIPT_DIR\automation\config.yaml" -Value $configTemplate
 
 # 4. Generate Cloud-Init
 Show-Step "Generating server configuration..."
-"$VpnPass`n$AgPass" | & "$SCRIPT_DIR\automation\generate_cloud_init.ps1" | Out-Null
+$VpnPass, $AgPass | & "$SCRIPT_DIR\automation\generate_cloud_init.ps1" | Out-Null
 Show-Success "Deployment files ready."
 
 # 5. Deployment
