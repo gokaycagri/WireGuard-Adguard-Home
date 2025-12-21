@@ -1,4 +1,4 @@
-# Professional VPN Setup CLI - Robust Lockdown
+# Professional VPN Setup CLI - Enterprise Edition
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 . "$SCRIPT_DIR\automation\lib.ps1"
@@ -66,7 +66,7 @@ if ($choice -eq "y") {
     Show-Header "DEPLOYMENT STARTED"
     & "$SCRIPT_DIR\automation\azure_deploy.ps1"
     
-    # Reload config to get the Server IP
+    # Reload config
     $config = Get-VpnConfig
     $ServerIp = $config.server.ip
     $RG = $config.azure.resource_group
@@ -79,28 +79,30 @@ if ($choice -eq "y") {
     & "$SCRIPT_DIR\automation\configure_https.ps1" -ServerIp $ServerIp
     
     Show-Step "Applying security lockdown (IP restricted access)..."
-    $AdminIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
-    
-    # Dynamically find the NSG Name from VM details
-    Show-Step "Detecting Network Security Group name..."
-    $nicId = az vm show -g $RG -n $VM --query "networkProfile.networkInterfaces[0].id" -o tsv
-    $nsgId = az network nic show --id $nicId --query "networkSecurityGroup.id" -o tsv
-    $nsgName = ($nsgId -split "/")[-1]
+    try {
+        $AdminIp = Get-PublicIp
+        Show-Step "Detecting Network Security Group..."
+        $nsgName = Get-AzureNsgName -Rg $RG -Vm $VM
 
-    if ($nsgName) {
-        Show-Step "Locking down NSG: $nsgName"
-        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
-        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
-        az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
-        Show-Success "Firewall restricted to $AdminIp."
-    } else {
-        Show-Error "Could not detect NSG name. Management ports remain open."
+        if ($nsgName) {
+            Show-Step "Locking down NSG: $nsgName to $AdminIp"
+            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
+            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
+            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
+            Show-Success "Firewall restricted."
+        } else {
+            Show-Error "Could not detect NSG name. Please lock down manually."
+        }
+    } catch {
+        Show-Error "Lockdown failed. Error: $_"
     }
 
     Show-Success "Installation Complete!"
     Write-Host "`nDashboards are now accessible at:" -ForegroundColor Cyan
-    Write-Host "VPN:     https://vpn.$ServerIp.sslip.io" -ForegroundColor White
-    Write-Host "AdGuard: https://adguard.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "VPN:       https://vpn.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "AdGuard:   https://adguard.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "SpeedTest: https://speed.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "Glances:   https://glances.$ServerIp.sslip.io" -ForegroundColor White
     
     Write-Host "`n--- MAINTENANCE NOTICE ---" -ForegroundColor Yellow
     Write-Host "SSL certificates expire every 90 days. Run:" -ForegroundColor Gray

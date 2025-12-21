@@ -1,21 +1,21 @@
-# Project Context: Azure WireGuard & AdGuard Home VPN (Hardened Pro Edition)
+# Project Context: Azure WireGuard & AdGuard Home VPN (Ultimate Edition)
 
 ## Project Overview
-This project is a high-security, professional deployment solution for a personal VPN on Microsoft Azure. It integrates **WireGuard** for high-performance tunneling and **AdGuard Home** for network-wide DNS ad-blocking. The system is hardened at the OS and network layers and optimized for Azure's economic B-series VMs.
+This project is a high-security, professional deployment solution for a personal VPN on Microsoft Azure. It integrates **WireGuard** for high-performance tunneling, **AdGuard Home** for network-wide DNS ad-blocking, **OpenSpeedTest** for bandwidth testing, and **Glances** for server monitoring. The system is hardened at the OS and network layers and optimized for Azure's economic B-series VMs.
 
 ## Key Features
 *   **Unified CLI Setup:** A single command (`setup.ps1`) manages the entire lifecycle.
-*   **RAM Optimization:** Automatic 2GB Swap file creation to ensure stability on 1GB RAM VMs.
-*   **Existing VNet Support:** Option to deploy into an existing Azure Virtual Network or create a new one.
+*   **Performance Stack:** Automatic 2GB Swap, MTU 1420, and PersistentKeepalive 25.
+*   **Monitoring Suite:** Integrated **OpenSpeedTest** and **Glances** dashboards.
 *   **Security Lockdown:** Automated firewall management that opens ports for SSL validation and then locks them to the Admin's IP.
 *   **Auto-Maintenance:** Integrated **Watchtower** for automatic software updates.
 *   **Hardened OS:** Includes Fail2Ban, kernel network hardening, and disabled password authentication.
-*   **Full HTTPS:** Secure web access via Caddy and Let's Encrypt using `sslip.io`.
+*   **Full HTTPS:** Secure web access via Caddy and Let's Encrypt using `sslip.io` (Production SSL).
 
 ## Architecture
 *   **Infrastructure:** Ubuntu 24.04 LTS on Azure, Static IP, Dynamic NSG.
-*   **Networking:** Isolated Docker network (`172.20.0.0/24`).
-*   **WireGuard Optimized:** MTU 1420, PersistentKeepalive, and forced DNS via AdGuard.
+*   **Networking:** Isolated Docker network with explicit host-port mapping for maximum compatibility.
+*   **WireGuard Optimized:** Auto-detected Public IP Endpoint.
 
 ## Workflow
 1.  Run `powershell ./setup.ps1`.

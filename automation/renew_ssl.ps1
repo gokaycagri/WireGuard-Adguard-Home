@@ -1,49 +1,47 @@
 # SSL Certificate Renewal Maintenance Script (Force Renew)
 $ErrorActionPreference = "Stop"
-
 $SCRIPT_DIR = $PSScriptRoot
-$CONFIG_FILE = "$SCRIPT_DIR\config.yaml"
-
-function Get-ConfigValue {
-    param ([string]$Section, [string]$Key)
-    $lines = Get-Content $CONFIG_FILE
-    $inSection = $false
-    foreach ($line in $lines) {
-        if ($line -match "^$Section\s*:") { $inSection = $true; continue }
-        if ($inSection -and $line -match "^\w+\s*:") { $inSection = $false }
-        if ($inSection -and $line -match "^\s+$Key\s*:\s*[`"']?([^`"']+)`?['`"]?") { return $Matches[1].Trim() }
-    }
-    return $null
-}
+. "$SCRIPT_DIR\lib.ps1"
 
 # 1. Load Settings
-$RG       = Get-ConfigValue -Section "azure" -Key "resource_group"
-$VM_NAME  = Get-ConfigValue -Section "azure" -Key "vm_name"
-$NSG_NAME = "${VM_NAME}NSG"
-$IP       = Get-ConfigValue -Section "server" -Key "ip"
-$ADMIN_IP = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
+$config = Get-VpnConfig
+$RG = $config.azure.resource_group
+$VM = $config.azure.vm_name
+$IP = $config.server.ip
 
-if ([string]::IsNullOrWhiteSpace($IP)) { Write-Error "Server IP not found in config.yaml" }
+if ([string]::IsNullOrWhiteSpace($IP)) { Show-Error "Server IP not found in config.yaml"; exit 1 }
 
-Write-Host "--- Starting Forced SSL Renewal Maintenance ---" -ForegroundColor Cyan
+Show-Header "SSL RENEWAL MAINTENANCE"
 
-# 2. Open Firewall
-Write-Host "[*] Opening Port 80/443 to the world temporarily..." -ForegroundColor Yellow
-az network nsg rule update --resource-group $RG --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes "*" --output none
-az network nsg rule update --resource-group $RG --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes "*" --output none
+# 2. Get Admin IP
+try {
+    $AdminIp = Get-PublicIp
+} catch {
+    Show-Error "Could not detect Public IP."
+    exit 1
+}
 
-# 3. Force Caddy to check for certificates
-Write-Host "[*] Triggering Caddy certificate renewal check..." -ForegroundColor Yellow
-# Restarting Caddy forces a re-evaluation of all managed certificates
+# 3. Detect NSG
+Show-Step "Detecting NSG..."
+$NSG_NAME = Get-AzureNsgName -Rg $RG -Vm $VM
+
+if (-not $NSG_NAME) { Show-Error "Could not find NSG."; exit 1 }
+
+# 4. Open Firewall
+Show-Step "Opening Ports 80/443..."
+az network nsg rule update -g $RG --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes "*" --output none
+az network nsg rule update -g $RG --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes "*" --output none
+
+# 5. Force Renew
+Show-Step "Triggering renewal on server..."
 ssh -o StrictHostKeyChecking=no azureuser@$IP "sudo docker compose -f /root/docker-compose.yml restart caddy"
 
-# 4. Wait for Let's Encrypt
-Write-Host "[*] Waiting 60 seconds for validation and download..." -ForegroundColor Gray
+Show-Step "Waiting 60s for validation..."
 Start-Sleep -Seconds 60
 
-# 5. Lockdown
-Write-Host "[*] Renewal window finished. Restricting access to $ADMIN_IP again..." -ForegroundColor Yellow
-az network nsg rule update --resource-group $RG --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes $ADMIN_IP --output none
-az network nsg rule update --resource-group $RG --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes $ADMIN_IP --output none
+# 6. Lockdown
+Show-Step "Locking down ports to $AdminIp..."
+az network nsg rule update -g $RG --nsg-name $NSG_NAME --name AllowHTTP --source-address-prefixes $AdminIp --output none
+az network nsg rule update -g $RG --nsg-name $NSG_NAME --name AllowHTTPS --source-address-prefixes $AdminIp --output none
 
-Write-Host "--- SSL Maintenance Complete. System is Secure again. ---" -ForegroundColor Green
+Show-Success "SSL Maintenance Complete."

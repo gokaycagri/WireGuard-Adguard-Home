@@ -1,57 +1,58 @@
-# VPN Project Requirements Checker
-$ErrorActionPreference = "Continue"
+# Requirements Check - Enterprise Edition
+$ErrorActionPreference = "Stop"
+$SCRIPT_DIR = $PSScriptRoot
+. "$SCRIPT_DIR\lib.ps1"
 
-Write-Host "--- Checking System Requirements ---" -ForegroundColor Cyan
+Show-Header "SYSTEM PRE-FLIGHT CHECK"
 
-$allPassed = $true
+# 1. Azure CLI
+try {
+    $azVer = az version --output json | ConvertFrom-Json
+    Show-Success "Azure CLI: Installed (v$($azVer.'azure-cli'))"
+} catch {
+    Show-Error "Azure CLI not found. Please install it."
+    exit 1
+}
 
-# 1. Azure CLI Check
-Write-Host "[1/3] Checking Azure CLI..." -NoNewline
-if (Get-Command "az" -ErrorAction SilentlyContinue) {
-    $azVer = az --version | Select-String "azure-cli"
-    Write-Host " [OK] ($($azVer.ToString().Trim()))" -ForegroundColor Green
-    
-    # Check if logged in
-    try {
-        $account = az account show --query name -o tsv 2>$null
-        if ($null -ne $account) {
-            Write-Host "      Logged in as: $account" -ForegroundColor Gray
-        } else {
-            Write-Host "      WARNING: Not logged in. Run 'az login' before deploying." -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Host "      WARNING: Not logged in. Run 'az login' before deploying." -ForegroundColor Yellow
+# 2. Azure Login
+try {
+    $account = az account show --output json | ConvertFrom-Json
+    Show-Success "Azure Auth: Logged in as $($account.user.name)"
+} catch {
+    Show-Step "Please login to Azure..."
+    az login --output none
+    Show-Success "Azure Auth: Login successful"
+}
+
+# 3. SSH Client
+try {
+    $sshVer = ssh -V 2>&1
+    if ($sshVer -match "OpenSSH") {
+        Show-Success "SSH Client: OpenSSH found"
+    } else {
+        Show-Error "SSH Client: Unknown version ($sshVer)"
     }
-} else {
-    Write-Host " [FAILED]" -ForegroundColor Red
-    Write-Host "      Azure CLI not found. Install it from: https://aka.ms/installazurecliwindows" -ForegroundColor Gray
-    $allPassed = $false
+} catch {
+    Show-Error "SSH Client not found. Install OpenSSH."
 }
 
-# 2. OpenSSH Check
-Write-Host "[2/3] Checking OpenSSH Client..." -NoNewline
-if (Get-Command "ssh" -ErrorAction SilentlyContinue) {
-    Write-Host " [OK]" -ForegroundColor Green
+# 4. SSH Keys
+$keyPath = "$env:USERPROFILE\.ssh\id_rsa.pub"
+if (Test-Path $keyPath) {
+    Show-Success "SSH Key: Found at $keyPath"
 } else {
-    Write-Host " [FAILED]" -ForegroundColor Red
-    Write-Host "      SSH client not found. On Windows, enable 'OpenSSH Client' in Optional Features." -ForegroundColor Gray
-    $allPassed = $false
+    Show-Step "Generating SSH Key..."
+    mkdir "$env:USERPROFILE\.ssh" -Force | Out-Null
+    ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N ""
+    Show-Success "SSH Key: Generated new keypair"
 }
 
-# 3. SSH Key Check
-Write-Host "[3/3] Checking SSH Keys..." -NoNewline
-$sshKeyPath = "$HOME\.ssh\id_rsa.pub"
-if (Test-Path $sshKeyPath) {
-    Write-Host " [OK] ($sshKeyPath)" -ForegroundColor Green
-} else {
-    Write-Host " [MISSING]" -ForegroundColor Yellow
-    Write-Host "      No SSH public key found. Run 'ssh-keygen -t rsa -b 4096' to create one." -ForegroundColor Gray
-    $allPassed = $false
+# 5. Git
+try {
+    git --version | Out-Null
+    Show-Success "Git: Installed"
+} catch {
+    Show-Step "Git is recommended but not strictly required."
 }
 
-Write-Host "------------------------------------"
-if ($allPassed) {
-    Write-Host "STATUS: Your system is READY for deployment." -ForegroundColor Green
-} else {
-    Write-Host "STATUS: Some requirements are missing. Please fix them before proceeding." -ForegroundColor Red
-}
+Write-Host "`nSystem is ready for deployment." -ForegroundColor Cyan

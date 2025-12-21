@@ -1,4 +1,4 @@
-# Azure Deployment Script - Beautified
+# Azure Deployment Script - Enterprise Edition
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 . "$SCRIPT_DIR\lib.ps1"
@@ -13,15 +13,20 @@ $VM      = $config.azure.vm_name
 $User    = $config.azure.admin_user
 $Cloud   = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
 
-if (!$RG -or !$Loc -or !$VM -or !$User) {
+if ([string]::IsNullOrWhiteSpace($RG) -or [string]::IsNullOrWhiteSpace($VM)) {
     Show-Error "Critical variables missing in config.yaml! Please run setup.ps1 again."
     exit 1
 }
 
 # 2. Get Admin IP
 Show-Step "Detecting your Public IP..."
-$AdminIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
-Show-Success "Detected IP: $AdminIp"
+try {
+    $AdminIp = Get-PublicIp
+    Show-Success "Detected IP: $AdminIp"
+} catch {
+    Show-Error "Could not detect Public IP. Defaulting to open access (*)."
+    $AdminIp = "*"
+}
 
 # 3. Resource Group
 Show-Step "Creating Resource Group ($RG)..."
@@ -30,10 +35,10 @@ az group create --name $RG --location $Loc --output none
 # 4. Create VM
 Show-Step "Provisioning VM ($VM)..."
 $vnetArgs = @()
-if ($config.azure.vnet_name) {
+if (-not [string]::IsNullOrWhiteSpace($config.azure.vnet_name)) {
     Show-Step "Using existing VNet: $($config.azure.vnet_name)"
     $vnetArgs += "--vnet-name", $config.azure.vnet_name
-    if ($config.azure.subnet_name) {
+    if (-not [string]::IsNullOrWhiteSpace($config.azure.subnet_name)) {
         $vnetArgs += "--subnet", $config.azure.subnet_name
     }
 }
@@ -54,6 +59,7 @@ az vm create `
 # 5. Network Security
 Show-Step "Hardening Network (NSG)..."
 $NSG = "${VM}NSG"
+# Try to delete default rule safely
 az network nsg rule delete -g $RG --nsg-name $NSG --name default-allow-ssh --output none 2>$null
 
 # Public VPN Port

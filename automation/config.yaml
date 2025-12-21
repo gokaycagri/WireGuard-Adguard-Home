@@ -1,5 +1,5 @@
 azure:
-  resource_group: "jjkj"
+  resource_group: "kk"
   location: "northeurope"
   vm_name: "VPN-VM"
   vm_size: "Standard_B1s"
@@ -7,7 +7,7 @@ azure:
   vnet_name: ""
   subnet_name: ""
 server:
-  ip: "20.234.2.73"
+  ip: "20.166.52.12"
 adguard:
   username: "admin"
   upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]

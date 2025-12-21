@@ -1,4 +1,4 @@
-# Configuration Generator - Final Bulletproof Edition
+# Configuration Generator - Final Bulletproof Edition with OpenSpeedTest
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 . "$SCRIPT_DIR\lib.ps1"
@@ -7,11 +7,11 @@ $SCRIPT_DIR = $PSScriptRoot
 $config = Get-VpnConfig
 $ag_user = $config.adguard.username
 
-# 2. Handle Passwords (Cleaning up input)
+# 2. Handle Passwords
 if ($MyInvocation.ExpectingInput) {
-    $inputData = @($input | Where-Object { $_ -ne $null })
-    $vpnPassword = if ($inputData[0]) { $inputData[0].Trim() } else { "password" }
-    $agPassword = if ($inputData[1]) { $inputData[1].Trim() } else { "password" }
+    $inputData = @($input)
+    $vpnPassword = $inputData[0].Trim()
+    $agPassword = $inputData[1].Trim()
 } else {
     $vpnPassword = (Read-Host "  VPN UI Password").Trim()
     $agPassword = (Read-Host "  AdGuard UI Password").Trim()
@@ -19,8 +19,6 @@ if ($MyInvocation.ExpectingInput) {
 if (!$vpnPassword) { $vpnPassword = "password" }
 if (!$agPassword) { $agPassword = "password" }
 
-# 3. Final Cloud-Init Template
-# We use Base64 for passwords to ensure NO shell or YAML interference
 $vpnBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($vpnPassword))
 $agBase64  = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($agPassword))
 
@@ -57,14 +55,16 @@ write_files:
       # 1. Decode Passwords
       VPN_PASS=$(echo "{{VPN_B64}}" | base64 -d)
       AG_PASS=$(echo "{{AG_B64}}" | base64 -d)
+      
+      # Detect Public IP
+      PUB_IP=$(curl -s https://api.ipify.org || echo "auto")
 
       # 2. Generate Hashes
       VPN_HASH=$(htpasswd -B -n -b admin "$VPN_PASS" | cut -d ":" -f 2)
       AG_HASH=$(htpasswd -B -n -b admin "$AG_PASS" | cut -d ":" -f 2)
-      # Escape $ for Docker Compose
       ESCAPED_VPN_HASH=$(echo "$VPN_HASH" | sed 's/\$/\$\$/g')
 
-      # 3. Create AdGuard Config
+      # 3. Create AdGuard Config (Hardened & Systemd-Free)
       mkdir -p /root/adguard/conf
       cat <<EOF > /root/adguard/conf/AdGuardHome.yaml
       http:
@@ -76,77 +76,120 @@ write_files:
       dns:
         bind_hosts: ["0.0.0.0"]
         port: 53
-        upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
-      filtering_enabled: true
-      protection_enabled: true
+        upstream_dns:
+          - "https://dns.cloudflare.com/dns-query"
+          - "tls://1.1.1.1"
+        bootstrap_dns:
+          - "1.1.1.1"
+          - "8.8.8.8"
+        enable_dnssec: true
+        edns_client_subnet:
+          enabled: false
+        ratelimit: 20
+        filtering_enabled: true
+        protection_enabled: true
+        blocking_mode: default
+      querylog:
+        enabled: true
+        interval: 24h
+        anonymize_client_ip: true
+      statistics:
+        enabled: true
+        interval: 24h
+      filters:
+        - enabled: true
+          url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+          name: AdGuard DNS filter
+          id: 1
       setup_done: true
       EOF
 
-      # 4. Create Caddyfile
-      cat <<'EOF' > /root/Caddyfile
-      {
+      # 3. Write Caddyfile
+      with open('/root/Caddyfile', 'w') as f:
+          f.write("""{ 
         email admin@sslip.io
       }
       adguard.DOMAIN_PLACEHOLDER {
-        tls internal
         reverse_proxy adguardhome:8080 {
           header_up Host {host}
           header_up X-Real-IP {remote_host}
+          header_up X-Forwarded-For {remote_host}
+          header_up X-Forwarded-Proto {scheme}
         }
       }
       vpn.DOMAIN_PLACEHOLDER {
-        tls internal
         reverse_proxy wg-easy:51821
       }
-      EOF
+      speed.DOMAIN_PLACEHOLDER {
+        reverse_proxy speedtest:3000
+      }
+      glances.DOMAIN_PLACEHOLDER {
+        reverse_proxy glances:61208
+      }
+      """)
 
-      # 5. Create Docker Compose
+      # 5. Create Docker Compose (With Monitoring)
       cat <<EOF > /root/docker-compose.yml
-      services:
-        caddy:
-          image: caddy:latest
-          container_name: caddy
-          restart: unless-stopped
-          ports: ["80:80", "443:443", "443:443/udp"]
-          volumes: ["./Caddyfile:/etc/caddy/Caddyfile", "./caddy_data:/data"]
-        wg-easy:
-          image: ghcr.io/wg-easy/wg-easy
-          container_name: wg-easy
-          environment:
-            - WG_HOST=auto
-            - PASSWORD_HASH=$ESCAPED_VPN_HASH
-            - WG_DEFAULT_DNS=172.20.0.53
-            - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
-            - WG_MTU=1420
-            - WG_PERSISTENT_KEEPALIVE=25
-          volumes: ["./wg-easy:/etc/wireguard"]
-          ports: ["51820:51820/udp"]
-          expose: ["51821"]
-          cap_add: [NET_ADMIN, SYS_MODULE]
-          sysctls:
-            - net.ipv4.ip_forward=1
-            - net.ipv6.conf.all.forwarding=1
-          restart: unless-stopped
-        adguardhome:
-          image: adguard/adguardhome
-          container_name: adguardhome
-          volumes: ["./adguard/work:/opt/adguardhome/work", "./adguard/conf:/opt/adguardhome/conf"]
-          expose: ["8080"]
-          networks:
-            default:
-              ipv4_address: 172.20.0.53
-          restart: unless-stopped
-        watchtower:
-          image: containrrr/watchtower
-          volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
-          command: --cleanup --interval 86400
-          restart: unless-stopped
-      networks:
-        default:
-          ipam:
-            config:
-              - subnet: 172.20.0.0/24
-      EOF
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile", "./caddy_data:/data"]
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy
+    container_name: wg-easy
+    environment:
+      - WG_HOST=$PUB_IP
+      - PASSWORD_HASH=$ESCAPED_VPN_HASH
+      - WG_DEFAULT_DNS=172.20.0.53
+      - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
+      - WG_MTU=1420
+      - WG_PERSISTENT_KEEPALIVE=25
+    volumes: ["./wg-easy:/etc/wireguard"]
+    ports: ["51820:51820/udp"]
+    expose: ["51821"]
+    cap_add: [NET_ADMIN, SYS_MODULE]
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    restart: unless-stopped
+  adguardhome:
+    image: adguard/adguardhome
+    container_name: adguardhome
+    volumes: ["./adguard/work:/opt/adguardhome/work", "./adguard/conf:/opt/adguardhome/conf"]
+    ports: ["53:53/udp", "53:53/tcp"]
+    networks:
+      default:
+        ipv4_address: 172.20.0.53
+    restart: unless-stopped
+  speedtest:
+    image: openspeedtest/latest
+    container_name: speedtest
+    restart: unless-stopped
+    expose: ["3000"]
+  glances:
+    image: nicolargo/glances:latest
+    container_name: glances
+    restart: unless-stopped
+    pid: host
+    environment:
+      - GLANCES_OPT=-w
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose: ["61208"]
+  watchtower:
+    image: containrrr/watchtower
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    command: --cleanup --interval 86400
+    restart: unless-stopped
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+EOF
 
       # 6. Kernel Hardening
       cat <<EOF > /etc/sysctl.d/99-hardened.conf
@@ -160,9 +203,17 @@ write_files:
       EOF
       sysctl -p /etc/sysctl.d/99-hardened.conf
 
-      # 7. Firewall
+      # 7. Firewall & DNS Fix
+      # Disable systemd-resolved to free port 53
+      systemctl stop systemd-resolved || true
+      systemctl disable systemd-resolved || true
+      rm -f /etc/resolv.conf
+      echo "nameserver 1.1.1.1" > /etc/resolv.conf
+
       ufw default deny incoming
       ufw allow ssh; ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 51820/udp
+      # Allow DNS explicitly
+      ufw allow 53/udp; ufw allow 53/tcp
       echo "y" | ufw enable
       
       # 8. Launch
@@ -177,4 +228,4 @@ runcmd:
 $final = $template.Replace("{{VPN_B64}}", $vpnBase64).Replace("{{AG_B64}}", $agBase64).Replace("{{AG_USER}}", $ag_user)
 $outputPath = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
 [System.IO.File]::WriteAllText($outputPath, $final, [System.Text.Encoding]::ASCII)
-Show-Success "Bulletproof configuration generated."
+Show-Success "Feature-rich configuration generated."
