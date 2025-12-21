@@ -1,51 +1,51 @@
-# Professional VPN Setup CLI - Enterprise Edition
+# Professional VPN Setup CLI - Clean Code Edition
 $ErrorActionPreference = "Stop"
-$SCRIPT_DIR = $PSScriptRoot
-. "$SCRIPT_DIR\automation\lib.ps1"
+$ScriptDir = $PSScriptRoot
+. "$ScriptDir\automation\lib.ps1"
 
 Clear-Host
 Show-Header "AZURE VPN & ADGUARD HOME INSTALLER"
 
-# 1. Check Requirements
+# 1. Pre-Flight Checks
 Show-Step "Verifying system requirements..."
-& "$SCRIPT_DIR\automation\check_requirements.ps1"
+& "$ScriptDir\automation\check_requirements.ps1"
 
-# 2. Collect Information
+# 2. Configuration Gathering
 Show-Header "CONFIGURATION"
 
-$RG      = Read-Host "  Enter Resource Group Name [VPN-RS]"
-if (!$RG) { $RG = "VPN-RS" }
+$ResourceGroup = Read-Host "  Enter Resource Group Name [VPN-RS]"
+if (-not $ResourceGroup) { $ResourceGroup = "VPN-RS" }
 
-$VM      = Read-Host "  Enter Virtual Machine Name [VPN-VM]"
-if (!$VM) { $VM = "VPN-VM" }
+$VmName = Read-Host "  Enter Virtual Machine Name [VPN-VM]"
+if (-not $VmName) { $VmName = "VPN-VM" }
 
-$Region  = Read-Host "  Enter Azure Region [northeurope]"
-if (!$Region) { $Region = "northeurope" }
+$Region = Read-Host "  Enter Azure Region [northeurope]"
+if (-not $Region) { $Region = "northeurope" }
 
-$adminUser = Read-Host "  Enter Admin Username [azureuser]"
-if (!$adminUser) { $adminUser = "azureuser" }
+$AdminUser = Read-Host "  Enter Admin Username [azureuser]"
+if (-not $AdminUser) { $AdminUser = "azureuser" }
 
-$VNet = Read-Host "  Enter Existing VNet Name (Leave empty to create new)"
-$Subnet = ""
-if ($VNet) {
-    $Subnet = Read-Host "  Enter Subnet Name for this VNet"
+$VNetName = Read-Host "  Enter Existing VNet Name (Leave empty to create new)"
+$SubnetName = ""
+if ($VNetName) {
+    $SubnetName = Read-Host "  Enter Subnet Name for this VNet"
 }
 
 Write-Host "`n  --- Security ---" -ForegroundColor Yellow
-$VpnPass = Read-Host "  Set WireGuard Web Password"
-$AgPass  = Read-Host "  Set AdGuard Admin Password"
+$VpnPassword = Read-Host "  Set WireGuard Web Password"
+$AdGuardPassword = Read-Host "  Set AdGuard Admin Password"
 
-# 3. Save Config
+# 3. Save Configuration
 Show-Step "Saving settings to config.yaml..."
-$configTemplate = @"
+$ConfigTemplate = @"
 azure:
-  resource_group: "$RG"
+  resource_group: "$ResourceGroup"
   location: "$Region"
-  vm_name: "$VM"
+  vm_name: "$VmName"
   vm_size: "Standard_B1s"
-  admin_user: "$adminUser"
-  vnet_name: "$VNet"
-  subnet_name: "$Subnet"
+  admin_user: "$AdminUser"
+  vnet_name: "$VNetName"
+  subnet_name: "$SubnetName"
 server:
   ip: "0.0.0.0"
 adguard:
@@ -53,42 +53,39 @@ adguard:
   upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
   blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
 "@
-Set-Content -Path "$SCRIPT_DIR\automation\config.yaml" -Value $configTemplate
+Set-Content -Path "$ScriptDir\automation\config.yaml" -Value $ConfigTemplate
 
 # 4. Generate Cloud-Init
 Show-Step "Generating server configuration..."
-$VpnPass, $AgPass | & "$SCRIPT_DIR\automation\generate_cloud_init.ps1" | Out-Null
+$VpnPassword, $AdGuardPassword | & "$ScriptDir\automation\generate_cloud_init.ps1" | Out-Null
 Show-Success "Deployment files ready."
 
-# 5. Deployment
-$choice = Read-Host "`nDo you want to deploy to Azure now? (y/n)"
-if ($choice -eq "y") {
+# 5. Deployment Confirmation
+$Choice = Read-Host "`nDo you want to deploy to Azure now? (y/n)"
+if ($Choice -eq "y") {
     Show-Header "DEPLOYMENT STARTED"
-    & "$SCRIPT_DIR\automation\azure_deploy.ps1"
+    & "$ScriptDir\automation\azure_deploy.ps1"
     
-    # Reload config
-    $config = Get-VpnConfig
-    $ServerIp = $config.server.ip
-    $RG = $config.azure.resource_group
-    $VM = $config.azure.vm_name
-
+    # Reload Config to get updated IP
+    $Config = Get-VpnConfig
+    $ServerIp = $Config.server.ip
+    
     Show-Step "Waiting for server initialization (60s)..."
     Start-Sleep -Seconds 60
     
     Show-Step "Finalizing HTTPS..."
-    & "$SCRIPT_DIR\automation\configure_https.ps1" -ServerIp $ServerIp
+    & "$ScriptDir\automation\configure_https.ps1" -ServerIp $ServerIp
     
-    Show-Step "Applying security lockdown (IP restricted access)..."
+    Show-Step "Applying security lockdown..."
     try {
         $AdminIp = Get-PublicIp
-        Show-Step "Detecting Network Security Group..."
-        $nsgName = Get-AzureNsgName -Rg $RG -Vm $VM
+        $NsgName = Get-AzureNsgName -ResourceGroup $ResourceGroup -VmName $VmName
 
-        if ($nsgName) {
-            Show-Step "Locking down NSG: $nsgName to $AdminIp"
-            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
-            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
-            az network nsg rule update -g $RG --nsg-name $nsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
+        if ($NsgName) {
+            Show-Step "Locking down NSG: $NsgName to $AdminIp"
+            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
+            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
+            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
             Show-Success "Firewall restricted."
         } else {
             Show-Error "Could not detect NSG name. Please lock down manually."

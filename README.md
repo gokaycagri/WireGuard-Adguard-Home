@@ -6,21 +6,26 @@
 [![AdGuard](https://img.shields.io/badge/AdGuard-68BC71?style=for-the-badge&logo=adguard&logoColor=white)](https://adguard.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-A high-performance, security-hardened, and fully automated personal VPN solution deployed on Microsoft Azure. Featuring **WireGuard**, **AdGuard Home**, **OpenSpeedTest**, and **Glances**—all secured behind **Caddy** with automatic HTTPS.
+A high-performance, security-hardened, and fully automated personal VPN solution deployed on Microsoft Azure. This suite provides a complete private gateway with DNS-level ad-blocking, speed testing, and real-time monitoring.
 
 ---
 
 ## ✨ Key Features
 
-*   **🚀 One-Click Setup:** A unified PowerShell CLI (`setup.ps1`) manages everything.
-*   **🔒 Hardened by Design:** IP-Locked Management, Fail2Ban, Kernel Tweaks.
-*   **⚡ Performance Optimized:** MTU Tuning, 2GB Swap, Persistent Keepalive.
-*   **🌐 Complete Suite:**
-    *   **VPN:** WireGuard (wg-easy)
-    *   **DNS:** AdGuard Home (Hardened Privacy)
-    *   **Speed:** OpenSpeedTest
-    *   **Health:** Glances
-*   **🔄 Zero Maintenance:** **Watchtower** automatically keeps everything updated.
+*   **🚀 One-Click Setup:** A unified PowerShell CLI (`setup.ps1`) handles everything from resource creation to SSL.
+*   **🔒 Hardened by Design:** 
+    *   **IP-Locked Management:** SSH and Web UIs are restricted to your specific Public IP.
+    *   **Kernel Tweaks:** Optimized network stack for high throughput and anti-spoofing.
+    *   **Fail2Ban:** Automated brute-force protection for SSH.
+*   **⚡ Performance Optimized:** 
+    *   **MTU Tuning:** Preset to 1420 for stable mobile connections.
+    *   **RAM Boost:** Automatic 2GB Swap file for stability on budget VMs.
+*   **🌐 Complete Stack:**
+    *   **WireGuard:** Modern, fast VPN tunneling.
+    *   **AdGuard Home:** Private DNS with DNSSEC & encrypted upstreams (DoH/DoT).
+    *   **OpenSpeedTest:** HTML5 based bandwidth testing.
+    *   **Glances:** Real-time server resource monitoring.
+*   **🔄 Zero Maintenance:** **Watchtower** automatically keeps all containers updated.
 
 ---
 
@@ -43,6 +48,7 @@ graph TD
         FW[Azure NSG - IP Locked]
         UFW[Ubuntu Firewall]
         F2B[Fail2Ban]
+        SWAP[2GB Swap File]
     end
 ```
 
@@ -50,24 +56,46 @@ graph TD
 
 ## 🚀 Quick Start
 
-### 1. Run the Installer
+### 1. Prerequisites
+*   **Azure CLI:** Installed and logged in (`az login`).
+*   **SSH Key:** Public key at `~/.ssh/id_rsa.pub`.
+*   **Powershell:** Core or Windows PowerShell.
+
+### 2. Run the Installer
 ```powershell
 powershell ./setup.ps1
 ```
 
-### 2. Follow the CLI Prompts
-*   Select your **Azure Region** and **Resource Names**.
-*   Set your **Dashboard Passwords**.
-*   Confirm with `y` to deploy.
-
 ### 3. Access Your Dashboards
-Once the script finishes, your secure links will be ready:
-*   **WireGuard UI:** `https://vpn.<SERVER_IP>.sslip.io`
-*   **AdGuard Home:** `https://adguard.<SERVER_IP>.sslip.io`
-*   **SpeedTest:** `https://speed.<SERVER_IP>.sslip.io`
-*   **Glances:** `https://glances.<SERVER_IP>.sslip.io`
+Once complete, the script will provide your personalized links:
+*   **VPN Admin:** `https://vpn.<SERVER_IP>.sslip.io`
+*   **DNS Admin:** `https://adguard.<SERVER_IP>.sslip.io`
+*   **Speed Test:** `https://speed.<SERVER_IP>.sslip.io`
+*   **Monitoring:** `https://glances.<SERVER_IP>.sslip.io`
+
+---
+
+## 🛠️ Maintenance
+
+### SSL Certificate Renewal
+Since management ports (80/443) are locked to your IP, automatic Let's Encrypt renewal may fail. Run this every ~80 days:
+```powershell
+powershell automation/renew_ssl.ps1
+```
+
+### Managing Access
+If your home/office IP changes and you lose access, the script will automatically detect your new IP and prompt to update the firewall rules.
+
+### Tear Down
+To remove all Azure resources and stop costs:
+```powershell
+powershell automation/azure_destroy.ps1
+```
 
 ---
 
 ## 📜 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Licensed under the [MIT License](LICENSE).
+
+---
+**⭐ If this project helped you, please give it a star!**

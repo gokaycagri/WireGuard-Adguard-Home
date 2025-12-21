@@ -1,19 +1,19 @@
-# Azure Deployment Script - Enterprise Edition
+# Azure Deployment Script - Clean Code Edition
 $ErrorActionPreference = "Stop"
-$SCRIPT_DIR = $PSScriptRoot
-. "$SCRIPT_DIR\lib.ps1"
+$ScriptDir = $PSScriptRoot
+. "$ScriptDir\lib.ps1"
 
-# 1. Load Data
-$config = Get-VpnConfig
-if (!$config) { Show-Error "Config not found!"; exit 1 }
+# 1. Load Configuration
+$Config = Get-VpnConfig
+if (-not $Config) { Show-Error "Config not found!"; exit 1 }
 
-$RG      = $config.azure.resource_group
-$Loc     = $config.azure.location
-$VM      = $config.azure.vm_name
-$User    = $config.azure.admin_user
-$Cloud   = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
+$ResourceGroup = $Config.azure.resource_group
+$Location      = $Config.azure.location
+$VmName        = $Config.azure.vm_name
+$AdminUser     = $Config.azure.admin_user
+$CloudInitFile = Join-Path $ScriptDir "..\final_cloud_init.yaml"
 
-if ([string]::IsNullOrWhiteSpace($RG) -or [string]::IsNullOrWhiteSpace($VM)) {
+if ([string]::IsNullOrWhiteSpace($ResourceGroup) -or [string]::IsNullOrWhiteSpace($VmName)) {
     Show-Error "Critical variables missing in config.yaml! Please run setup.ps1 again."
     exit 1
 }
@@ -28,52 +28,53 @@ try {
     $AdminIp = "*"
 }
 
-# 3. Resource Group
-Show-Step "Creating Resource Group ($RG)..."
-az group create --name $RG --location $Loc --output none
+# 3. Create Resource Group
+Show-Step "Creating Resource Group ($ResourceGroup)..."
+az group create --name $ResourceGroup --location $Location --output none
 
-# 4. Create VM
-Show-Step "Provisioning VM ($VM)..."
-$vnetArgs = @()
-if (-not [string]::IsNullOrWhiteSpace($config.azure.vnet_name)) {
-    Show-Step "Using existing VNet: $($config.azure.vnet_name)"
-    $vnetArgs += "--vnet-name", $config.azure.vnet_name
-    if (-not [string]::IsNullOrWhiteSpace($config.azure.subnet_name)) {
-        $vnetArgs += "--subnet", $config.azure.subnet_name
+# 4. Provision VM
+Show-Step "Provisioning VM ($VmName)..."
+$VNetArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($Config.azure.vnet_name)) {
+    Show-Step "Using existing VNet: $($Config.azure.vnet_name)"
+    $VNetArgs += "--vnet-name", $Config.azure.vnet_name
+    if (-not [string]::IsNullOrWhiteSpace($Config.azure.subnet_name)) {
+        $VNetArgs += "--subnet", $Config.azure.subnet_name
     }
 }
 
 az vm create `
-  --resource-group $RG `
-  --name $VM `
+  --resource-group $ResourceGroup `
+  --name $VmName `
   --image "Canonical:ubuntu-24_04-lts:server:latest" `
-  --size $config.azure.vm_size `
-  --admin-username $User `
+  --size $Config.azure.vm_size `
+  --admin-username $AdminUser `
   --generate-ssh-keys `
   --public-ip-sku Standard `
   --public-ip-address-allocation static `
-  --custom-data $Cloud `
-  @vnetArgs `
+  --custom-data $CloudInitFile `
+  @VNetArgs `
   --output none
 
-# 5. Network Security
+# 5. Network Security Hardening
 Show-Step "Hardening Network (NSG)..."
-$NSG = "${VM}NSG"
-# Try to delete default rule safely
-az network nsg rule delete -g $RG --nsg-name $NSG --name default-allow-ssh --output none 2>$null
+$NsgName = "${VmName}NSG"
 
-# Public VPN Port
-az network nsg rule create -g $RG --nsg-name $NSG --name AllowVPN --priority 1010 --protocol Udp --destination-port-ranges 51820 --access Allow --source-address-prefixes "*" --output none
+# Attempt to remove default SSH rule
+az network nsg rule delete -g $ResourceGroup --nsg-name $NsgName --name default-allow-ssh --output none 2>$null
 
-# Admin-Only Ports
-az network nsg rule create -g $RG --nsg-name $NSG --name AllowSSH --priority 1000 --protocol Tcp --destination-port-ranges 22 --access Allow --source-address-prefixes $AdminIp --output none
-az network nsg rule create -g $RG --nsg-name $NSG --name AllowHTTP --priority 1020 --protocol Tcp --destination-port-ranges 80 --access Allow --source-address-prefixes "*" --output none
-az network nsg rule create -g $RG --nsg-name $NSG --name AllowHTTPS --priority 1030 --protocol Tcp --destination-port-ranges 443 --access Allow --source-address-prefixes $AdminIp --output none
+# Public VPN Port (UDP 51820) - Always Open
+az network nsg rule create -g $ResourceGroup --nsg-name $NsgName --name AllowVPN --priority 1010 --protocol Udp --destination-port-ranges 51820 --access Allow --source-address-prefixes "*" --output none
 
-# 6. Finalize
-$Ip = az vm show -g $RG -n $VM --show-details --query publicIps --output tsv
-$content = Get-Content "$SCRIPT_DIR\config.yaml" -Raw
-$newContent = $content -replace '(?m)^(\s+ip:\s*).*$', "`$1`"$Ip`""
-Set-Content -Path "$SCRIPT_DIR\config.yaml" -Value $newContent
+# Management Ports (Restricted to Admin IP)
+az network nsg rule create -g $ResourceGroup --nsg-name $NsgName --name AllowSSH --priority 1000 --protocol Tcp --destination-port-ranges 22 --access Allow --source-address-prefixes $AdminIp --output none
+az network nsg rule create -g $ResourceGroup --nsg-name $NsgName --name AllowHTTP --priority 1020 --protocol Tcp --destination-port-ranges 80 --access Allow --source-address-prefixes "*" --output none
+az network nsg rule create -g $ResourceGroup --nsg-name $NsgName --name AllowHTTPS --priority 1030 --protocol Tcp --destination-port-ranges 443 --access Allow --source-address-prefixes $AdminIp --output none
 
-Show-Success "Deployment stage 1 finished. Server IP: $Ip"
+# 6. Finalize Config
+$PublicIp = az vm show -g $ResourceGroup -n $VmName --show-details --query publicIps --output tsv
+$ConfigContent = Get-Content "$ScriptDir\config.yaml" -Raw
+$NewContent = $ConfigContent -replace '(?m)^(\s+ip:\s*).*$', "`$1`"$PublicIp`""
+Set-Content -Path "$ScriptDir\config.yaml" -Value $NewContent
+
+Show-Success "Deployment stage 1 finished. Server IP: $PublicIp"
