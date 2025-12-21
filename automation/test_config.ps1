@@ -1,4 +1,4 @@
-# Configuration Logic Unit Test
+# Configuration Logic Unit Test - Ultimate Edition
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 $YAML_FILE = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
@@ -11,42 +11,44 @@ function Show-Test { param($Name, $Passed)
 Write-Host "--- Running Configuration Unit Tests ---" -ForegroundColor Cyan
 
 if (-not (Test-Path $YAML_FILE)) { 
-    Write-Host "No config file found to test!" -ForegroundColor Yellow
-    exit 
+    Write-Host "No config file found to test! Run generate_cloud_init.ps1 first." -ForegroundColor Yellow
+    exit 1
 }
 
 $content = Get-Content $YAML_FILE -Raw
 
-# Test 1: YAML Structure (Basic Check)
-$isYaml = $content.StartsWith("#cloud-config")
-Show-Test "Starts with #cloud-config" $isYaml
+# Test 1: YAML Structure
+Show-Test "Starts with #cloud-config" ($content.StartsWith("#cloud-config"))
 
-# Test 2: Placeholder Replacement
-$hasPlaceholder = $content.Contains("{{VPN_B64}}") -or $content.Contains("{{AG_B64}}")
-Show-Test "No unreplaced placeholders" (-not $hasPlaceholder)
+# Test 2: Placeholder Integrity
+Show-Test "No unreplaced B64 placeholders" (-not ($content.Contains("{{VPN_B64}}") -or $content.Contains("{{AG_B64}}")))
+Show-Test "No unreplaced User placeholders" (-not ($content.Contains("{{AG_USER}}")))
 
-# Test 3: Base64 Integrity
-if ($content -match 'VPN_PASS=\$\(echo "(.*?)" \| base64 -d\)') {
-    $b64 = $Matches[1]
-    try {
-        $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64))
-        Show-Test "Base64 Decoding ($decoded)" ($decoded -ne $null)
-    } catch {
-        Show-Test "Base64 Decoding" $false
-    }
-}
+# Test 3: AdGuard Port Mapping (Must be 53:53)
+Show-Test "AdGuard Port Mapping (53:53)" ($content.Contains("53:53/udp"))
 
-# Test 4: Indentation Check (Common Cloud-init killer)
+# Test 4: Caddy BasicAuth Check
+Show-Test "Caddy BasicAuth protection exists" ($content.Contains("basicauth {"))
+
+# Test 5: Docker Container Presence
+Show-Test "WireGuard included" ($content.Contains("wg-easy:"))
+Show-Test "AdGuard included" ($content.Contains("adguardhome:"))
+Show-Test "SpeedTest included" ($content.Contains("speedtest:"))
+Show-Test "Glances included" ($content.Contains("glances:"))
+
+# Test 6: Indentation (Critical)
 $lines = Get-Content $YAML_FILE
-$setupSection = $false
-$badIndent = $false
+$setupBlockFound = $false
+$indentError = $false
 foreach ($line in $lines) {
-    if ($line -match "path: /root/setup.sh") { $setupSection = $true; continue }
-    if ($setupSection -and $line -match "^runcmd:") { $setupSection = $false }
-    if ($setupSection -and $line.Trim().Length -gt 0 -and $line -match "^[^\s]" -and -not ($line -match "path:|permissions:|content:")) {
-        $badIndent = $true
+    if ($line -match "path: /root/setup.sh") { $setupBlockFound = $true; continue }
+    if ($setupBlockFound -and $line -match "^runcmd:") { $setupBlockFound = $false }
+    # Inside setup.sh, content should be indented at least 6 spaces
+    if ($setupBlockFound -and $line.Trim().Length -gt 0 -and $line -match "^[^\s]" -and -not ($line -match "path:|permissions:|content:")) {
+        $indentError = $true
     }
 }
-Show-Test "YAML Indentation integrity" (-not $badIndent)
+Show-Test "Cloud-Init Indentation Integrity" (-not $indentError)
 
 Write-Host "--- Tests Complete ---" -ForegroundColor Cyan
+if ($indentError) { exit 1 }

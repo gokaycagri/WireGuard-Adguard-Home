@@ -33,7 +33,7 @@ if ($VNetName) {
 
 Write-Host "`n  --- Security ---" -ForegroundColor Yellow
 $VpnPassword = Read-Host "  Set WireGuard Web Password"
-$AdGuardPassword = Read-Host "  Set AdGuard Admin Password"
+$AdGuardPassword = Read-Host "  Set Dashboard Password (AdGuard, SpeedTest, Glances)"
 
 # 3. Save Configuration
 Show-Step "Saving settings to config.yaml..."
@@ -58,7 +58,15 @@ Set-Content -Path "$ScriptDir\automation\config.yaml" -Value $ConfigTemplate
 # 4. Generate Cloud-Init
 Show-Step "Generating server configuration..."
 $VpnPassword, $AdGuardPassword | & "$ScriptDir\automation\generate_cloud_init.ps1" | Out-Null
-Show-Success "Deployment files ready."
+
+# 4.1 Run Pre-Flight Configuration Tests
+Show-Step "Running configuration unit tests..."
+& "$ScriptDir\automation\test_config.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Show-Error "Configuration validation failed. Aborting."
+    exit 1
+}
+Show-Success "Configuration valid."
 
 # 5. Deployment Confirmation
 $Choice = Read-Host "`nDo you want to deploy to Azure now? (y/n)"
@@ -73,6 +81,16 @@ if ($Choice -eq "y") {
     Show-Step "Waiting for server initialization (60s)..."
     Start-Sleep -Seconds 60
     
+    # 5.1 Post-Deployment Health Check
+    Show-Step "Verifying server health..."
+    & "$ScriptDir\automation\verify_deployment.ps1" -ServerIp $ServerIp
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "`n[WARNING] Health check reported issues. Please check logs above." -ForegroundColor Yellow
+        $Continue = Read-Host "Continue with HTTPS setup? (y/n)"
+        if ($Continue -ne "y") { exit }
+    }
+
     Show-Step "Finalizing HTTPS..."
     & "$ScriptDir\automation\configure_https.ps1" -ServerIp $ServerIp
     
