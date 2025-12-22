@@ -62,9 +62,8 @@ jobs:
       - name: Generate Cloud-Init (Simulation)
         shell: pwsh
         run: |
-          # Simulate user input for passwords
-          $dummyInput = "VPNPassword123`nAdGuardPassword123"
-          $dummyInput | & ./automation/generate_cloud_init.ps1
+          # Simulate user input for passwords (Array format for pipeline)
+          "VPNPassword123", "AdGuardPassword123" | & ./automation/generate_cloud_init.ps1
           
       - name: Run Built-in Unit Tests
         shell: pwsh
