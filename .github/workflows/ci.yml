@@ -1,0 +1,73 @@
+name: VPN Project CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # 1. PowerShell Script Analysis (Linting)
+  lint-powershell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # Install PSScriptAnalyzer
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -ErrorAction Stop
+          
+          # Run analysis on all PS1 files
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning
+          
+          if ($results) {
+              $results | Format-Table
+              # We don't fail the build here to allow for manual style choices, 
+              # but it will be visible in the logs.
+          } else {
+              Write-Host "No issues found."
+          }
+
+  # 2. Logic & Configuration Testing
+  test-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Mock Config
+        shell: pwsh
+        run: |
+          # Create a basic config.yaml for the test to pass
+          $ConfigTemplate = @"
+          azure:
+            resource_group: "TEST-RG"
+            location: "northeurope"
+            vm_name: "TEST-VM"
+            vm_size: "Standard_B1s"
+            admin_user: "azureuser"
+            vnet_name: ""
+            subnet_name: ""
+          server:
+            ip: "0.0.0.0"
+          adguard:
+            username: "admin"
+            upstream_dns: ["https://dns.cloudflare.com/dns-query"]
+            blocklists: []
+          "@
+          Set-Content -Path "automation/config.yaml" -Value $ConfigTemplate
+      
+      - name: Generate Cloud-Init (Simulation)
+        shell: pwsh
+        run: |
+          # Simulate user input for passwords
+          $dummyInput = "VPNPassword123`nAdGuardPassword123"
+          $dummyInput | & ./automation/generate_cloud_init.ps1
+          
+      - name: Run Built-in Unit Tests
+        shell: pwsh
+        run: |
+          # Execute our professional test suite
+          & ./automation/test_config.ps1
