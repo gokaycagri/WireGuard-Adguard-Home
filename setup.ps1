@@ -32,6 +32,9 @@ if ($VNetName) {
 }
 
 Write-Host "`n  --- Security ---" -ForegroundColor Yellow
+$DashboardUser = Read-Host "  Set Dashboard Username [admin]"
+if (-not $DashboardUser) { $DashboardUser = "admin" }
+
 $VpnPassword = Read-Host "  Set WireGuard Web Password"
 $AdGuardPassword = Read-Host "  Set Dashboard Password (AdGuard, SpeedTest, Glances)"
 
@@ -49,7 +52,7 @@ azure:
 server:
   ip: "0.0.0.0"
 adguard:
-  username: "admin"
+  username: "$DashboardUser"
   upstream_dns: ["https://dns.cloudflare.com/dns-query", "tls://1.1.1.1"]
   blocklists: ["https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"]
 "@
@@ -78,8 +81,8 @@ if ($Choice -eq "y") {
     $Config = Get-VpnConfig
     $ServerIp = $Config.server.ip
     
-    Show-Step "Waiting for server initialization (60s)..."
-    Start-Sleep -Seconds 60
+    Show-Step "Waiting for server initialization (120s)..."
+    Start-Sleep -Seconds 120
     
     # 5.1 Post-Deployment Health Check
     Show-Step "Verifying server health..."
@@ -94,22 +97,47 @@ if ($Choice -eq "y") {
     Show-Step "Finalizing HTTPS..."
     & "$ScriptDir\automation\configure_https.ps1" -ServerIp $ServerIp
     
-    Show-Step "Applying security lockdown..."
-    try {
-        $AdminIp = Get-PublicIp
-        $NsgName = Get-AzureNsgName -ResourceGroup $ResourceGroup -VmName $VmName
-
-        if ($NsgName) {
-            Show-Step "Locking down NSG: $NsgName to $AdminIp"
-            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
-            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
-            az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
-            Show-Success "Firewall restricted."
-        } else {
-            Show-Error "Could not detect NSG name. Please lock down manually."
+    # Automated SSL Verification Loop
+    Show-Step "Waiting for SSL certificates to be issued (this may take up to 2 minutes)..."
+    $maxRetries = 24 # 2 minutes (5s interval)
+    $sslReady = $false
+    
+    for ($i = 1; $i -le $maxRetries; $i++) {
+        try {
+            # Try to fetch the AdGuard login page securely
+            $request = Invoke-WebRequest -Uri "https://adguard.$ServerIp.sslip.io" -UseBasicParsing -ErrorAction Stop
+            if ($request.StatusCode -eq 200) {
+                $sslReady = $true
+                Show-Success "SSL Verification Successful!"
+                break
+            }
+        } catch {
+            Write-Host -NoNewline "."
+            Start-Sleep -Seconds 5
         }
-    } catch {
-        Show-Error "Lockdown failed. Error: $_"
+    }
+
+    if (-not $sslReady) {
+        Show-Error "SSL verification timed out. Firewall will NOT be locked down automatically."
+        Show-Error "Please verify via browser and run 'automation/renew_ssl.ps1' later."
+    } else {
+        Show-Step "Applying security lockdown (IP restricted access)..."
+        try {
+            $AdminIp = Get-PublicIp
+            $NsgName = Get-AzureNsgName -ResourceGroup $ResourceGroup -VmName $VmName
+
+            if ($NsgName) {
+                Show-Step "Locking down NSG: $NsgName to $AdminIp"
+                az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowSSH --source-address-prefixes $AdminIp --output none
+                az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTP --source-address-prefixes $AdminIp --output none
+                az network nsg rule update -g $ResourceGroup --nsg-name $NsgName --name AllowHTTPS --source-address-prefixes $AdminIp --output none
+                Show-Success "Firewall restricted."
+            } else {
+                Show-Error "Could not detect NSG name. Please lock down manually."
+            }
+        } catch {
+            Show-Error "Lockdown failed. Error: $_"
+        }
     }
 
     Show-Success "Installation Complete!"

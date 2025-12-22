@@ -24,8 +24,8 @@ Show-Test "Starts with #cloud-config" ($content.StartsWith("#cloud-config"))
 Show-Test "No unreplaced B64 placeholders" (-not ($content.Contains("{{VPN_B64}}") -or $content.Contains("{{AG_B64}}")))
 Show-Test "No unreplaced User placeholders" (-not ($content.Contains("{{AG_USER}}")))
 
-# Test 3: AdGuard Port Mapping (Must be 53:53)
-Show-Test "AdGuard Port Mapping (53:53)" ($content.Contains("53:53/udp"))
+# Test 3: AdGuard Network Mode (Must be host)
+Show-Test "AdGuard Host Network Mode" ($content.Contains("network_mode: host"))
 
 # Test 4: Caddy BasicAuth Check
 Show-Test "Caddy BasicAuth protection exists" ($content.Contains("basicauth {"))

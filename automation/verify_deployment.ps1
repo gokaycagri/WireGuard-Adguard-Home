@@ -10,11 +10,24 @@ if (!$ServerIp) { Show-Error "No Server IP provided."; exit 1 }
 Show-Header "VERIFYING DEPLOYMENT HEALTH"
 Show-Step "Target: $ServerIp"
 
-# Using simpler grep patterns to avoid escaping issues
-$checkCmd = "echo '--- Docker ---'; sudo docker ps --format 'table {{.Names}}\t{{.Status}}'; " +
-            "echo '--- Files ---'; [ -f /root/docker-compose.yml ] && echo '[OK] Compose exists'; " +
-            "echo '--- VPN Hash ---'; sudo grep 'PASSWORD_HASH' /root/docker-compose.yml | head -n 1"
+# Robust health check command
+$checkCmd = @"
+echo '--- Docker Containers ---
+'
+sudo docker ps --format 'table {{.Names}}  {{.Status}}  {{.Ports}}' || echo 'Docker failed'
+echo '--- Listening Ports ---
+'
+sudo ss -tulpn | grep -E ':80|:443|:51820|:8080|:3000|:53' || echo 'Ports check failed'
+echo '--- Critical Files ---
+'
+[ -f /root/docker-compose.yml ] && echo '[OK] Compose file found' || echo '[FAIL] Compose file missing'
+[ -f /root/adguard/conf/AdGuardHome.yaml ] && echo '[OK] AdGuard config found' || echo '[FAIL] AdGuard config missing'
+"@
 
 ssh -o StrictHostKeyChecking=no azureuser@$ServerIp "$checkCmd"
 
-Show-Success "System is up! Please try accessing your dashboard."
+if ($LASTEXITCODE -eq 0) {
+    Show-Success "Health check finished."
+} else {
+    Show-Error "Health check returned errors."
+}
