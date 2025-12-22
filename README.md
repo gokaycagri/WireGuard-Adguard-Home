@@ -21,7 +21,7 @@ A high-performance, security-hardened, and fully automated personal VPN solution
     *   **MTU Tuning:** Preset to 1420 for stable mobile connections.
     *   **RAM Boost:** Automatic 2GB Swap file for stability on budget VMs.
 *   **🌐 Complete Stack:**
-    *   **WireGuard:** Modern, fast VPN tunneling.
+    *   **WireGuard:** Modern, fast VPN tunneling (Auto-detected Public Endpoint).
     *   **AdGuard Home:** Private DNS with DNSSEC & encrypted upstreams (DoH/DoT).
     *   **OpenSpeedTest:** HTML5 based bandwidth testing.
     *   **Glances:** Real-time server resource monitoring.

@@ -35,8 +35,29 @@ Write-Host "`n  --- Security ---" -ForegroundColor Yellow
 $DashboardUser = Read-Host "  Set Dashboard Username [admin]"
 if (-not $DashboardUser) { $DashboardUser = "admin" }
 
-$VpnPassword = Read-Host "  Set WireGuard Web Password"
-$AdGuardPassword = Read-Host "  Set Dashboard Password (AdGuard, SpeedTest, Glances)"
+# WireGuard Password Validation
+while ($true) {
+    $VpnPassword = Read-Host "  Set WireGuard Web Password (max 15 chars)"
+    if ([string]::IsNullOrWhiteSpace($VpnPassword)) {
+        Show-Error "Password cannot be empty."
+    } elseif ($VpnPassword.Length -gt 15) {
+        Show-Error "Password too long (max 15 characters)."
+    } else {
+        break
+    }
+}
+
+# Dashboard Password Validation
+while ($true) {
+    $AdGuardPassword = Read-Host "  Set Dashboard Password (AdGuard, SpeedTest, Glances) (max 15 chars)"
+    if ([string]::IsNullOrWhiteSpace($AdGuardPassword)) {
+        Show-Error "Password cannot be empty."
+    } elseif ($AdGuardPassword.Length -gt 15) {
+        Show-Error "Password too long (max 15 characters)."
+    } else {
+        break
+    }
+}
 
 # 3. Save Configuration
 Show-Step "Saving settings to config.yaml..."
@@ -81,8 +102,8 @@ if ($Choice -eq "y") {
     $Config = Get-VpnConfig
     $ServerIp = $Config.server.ip
     
-    Show-Step "Waiting for server initialization (120s)..."
-    Start-Sleep -Seconds 120
+    Show-Step "Waiting for server initialization (180s)..."
+    Start-Sleep -Seconds 180
     
     # 5.1 Post-Deployment Health Check
     Show-Step "Verifying server health..."

@@ -24,6 +24,7 @@ powershell automation/check_requirements.ps1
     ```powershell
     powershell ./setup.ps1
     ```
+    *This script handles all cloud-init generation, IP detection, and security hardening automatically.*
 2.  **Follow the Prompts:** Enter your Resource Group, VM Name, and desired Region.
 3.  **Dashboards:** Set your passwords.
 4.  **Deployment:** Confirm with `y` to begin the automated process.

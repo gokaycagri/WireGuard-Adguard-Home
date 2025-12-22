@@ -15,10 +15,14 @@ This project is a high-security, professional deployment solution for a personal
 ## Architecture
 *   **Infrastructure:** Ubuntu 24.04 LTS on Azure, Static IP, Dynamic NSG.
 *   **Networking:** Isolated Docker network with explicit host-port mapping for maximum compatibility.
-*   **WireGuard Optimized:** Auto-detected Public IP Endpoint.
+*   **WireGuard Optimized:** Auto-detected Public IP Endpoint (Fixed `curl` expansion).
 
 ## Workflow
 1.  Run `powershell ./setup.ps1`.
 2.  Input Azure resources, network preferences, and passwords.
 3.  The system deploys, configures HTTPS, and locks down the firewall automatically.
 4.  Maintenance (SSL renewal) is handled via `automation/renew_ssl.ps1`.
+
+## Recent Changes
+*   **Fixed:** WireGuard Endpoint configuration now correctly executes `curl` on the server side to resolve the public IP.
+*   **Cleanup:** Removed `emergency_fix` and `nuclear_fix` scripts as the core `setup.ps1` is now stable.

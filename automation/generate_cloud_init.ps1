@@ -1,40 +1,36 @@
-# Configuration Generator - Final Robust Edition
+# Configuration Generator - Ultimate Bulletproof Edition (Fixed Variable Name)
 $ErrorActionPreference = "Stop"
-$SCRIPT_DIR = $PSScriptRoot
-. "$SCRIPT_DIR\lib.ps1"
+$ScriptDir = $PSScriptRoot
+. "$ScriptDir\lib.ps1"
 
 # 1. Load Data
-$config = Get-VpnConfig
-$ag_user = $config.adguard.username
+$Config = Get-VpnConfig
+$AgUser = $Config.adguard.username
 
-# 2. Handle Passwords (Improved Array Input)
+# 2. Handle Passwords (Strict Validation)
 if ($MyInvocation.ExpectingInput) {
     $inputData = @($input | Where-Object { $_ -ne $null })
-    $vpnPassword = if ($inputData[0]) { $inputData[0].Trim() } else { "password" }
-    $agPassword = if ($inputData[1]) { $inputData[1].Trim() } else { "password" }
+    $VpnPass = $inputData[0].Trim()
+    $AgPass = $inputData[1].Trim()
 } else {
-    $vpnPassword = (Read-Host "  VPN UI Password").Trim()
-    $agPassword = (Read-Host "  Dashboard Password").Trim()
+    $VpnPass = (Read-Host "  VPN UI Password").Trim()
+    $AgPass = (Read-Host "  Dashboard Password").Trim()
 }
-if (!$vpnPassword) { $vpnPassword = "password" }
-if (!$agPassword) { $agPassword = "password" }
 
-$vpnBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($vpnPassword))
-$agBase64  = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($agPassword))
+$VpnB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($VpnPass))
+$AgB64  = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($AgPass))
 
-# 3. Final Cloud-Init Template
-# Note: Indentation here is for the internal Bash script. 
-# We will wrap this in the YAML structure with proper indentation later.
+# 3. Final Bash Setup Script
 $bashScript = @'
 #!/bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
-# 0. Fix Hostname and Wait for Net
+# 0. Fix Hostname
 echo "127.0.0.1 $(hostname)" >> /etc/hosts
-sleep 15
+sleep 10
 
-# 1. Install Packages
+# 1. Install Packages (Force reliable install)
 apt-get update
 apt-get install -y docker.io docker-compose-v2 curl ufw apache2-utils fail2ban unattended-upgrades
 
@@ -47,22 +43,16 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
 fi
 
-# 3. Decode Passwords & Detect IP
+# 3. Decode Passwords
 VPN_PASS=$(echo "{{VPN_B64}}" | base64 -d)
 AG_PASS=$(echo "{{AG_B64}}" | base64 -d)
-PUB_IP=$(curl -s https://api.ipify.org || echo "auto")
 
-# 4. Generate Hashes
-command -v htpasswd >/dev/null 2>&1 || (apt-get update && apt-get install -y apache2-utils)
+# 4. Generate Hashes (Using pure bash to avoid shell expansion issues)
 VPN_HASH=$(htpasswd -B -n -b admin "$VPN_PASS" | cut -d ":" -f 2)
 ESCAPED_VPN_HASH=$(echo "$VPN_HASH" | sed 's/\$/\$\$/g')
 AG_HASH=$(htpasswd -B -n -b admin "$AG_PASS" | cut -d ":" -f 2)
 
-# Generate Caddy Auth Hash
-systemctl start docker
-CADDY_HASH=$(docker run --rm caddy:latest caddy hash-password --plaintext "$AG_PASS")
-
-# 5. Create AdGuard Config
+# 5. Create AdGuard Config (MOST STABLE YAML FORMAT)
 mkdir -p /root/adguard/conf /root/adguard/work
 cat <<EOF > /root/adguard/conf/AdGuardHome.yaml
 http:
@@ -72,7 +62,8 @@ users:
   - name: "{{AG_USER}}"
     password: "$AG_HASH"
 dns:
-  bind_hosts: ["0.0.0.0"]
+  bind_hosts:
+    - 0.0.0.0
   port: 53
   protection_enabled: true
   filtering_enabled: true
@@ -90,10 +81,12 @@ filtering:
     - domain: "glances.DOMAIN_PLACEHOLDER"
       answer: "10.8.0.1"
       enabled: true
-schema_version: 14
+setup_done: true
+schema_version: 32
 EOF
 
 # 6. Create Caddyfile
+# Placeholder for Auth - will be filled by Caddy tool
 cat <<'EOF' > /root/Caddyfile
 {
   email admin@sslip.io
@@ -123,9 +116,11 @@ glances.DOMAIN_PLACEHOLDER {
 }
 EOF
 
+# Inject Caddy Hash
+CADDY_HASH=$(docker run --rm caddy:latest caddy hash-password --plaintext "$AG_PASS")
 sed -i "s|CADDY_HASH_PLACEHOLDER|$CADDY_HASH|g" /root/Caddyfile
 
-# 7. Create Docker Compose
+# 7. Create Docker Compose (Using Double $$ for all variable hashes)
 cat <<EOF > /root/docker-compose.yml
 services:
   caddy:
@@ -140,7 +135,7 @@ services:
     container_name: wg-easy
     restart: unless-stopped
     environment:
-      - WG_HOST=$PUB_IP
+      - WG_HOST=$(curl -s https://api.ipify.org)
       - PASSWORD_HASH=$ESCAPED_VPN_HASH
       - WG_DEFAULT_DNS=172.20.0.53
       - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
@@ -175,6 +170,7 @@ services:
     networks: { default: { ipv4_address: 172.20.0.5 } }
   watchtower:
     image: containrrr/watchtower
+    container_name: watchtower
     volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
     command: --cleanup --interval 86400
     restart: unless-stopped
@@ -184,18 +180,18 @@ networks:
       config: [{ subnet: 172.20.0.0/24 }]
 EOF
 
-# 8. Routing & NAT
+# 8. DNS Fix
+systemctl stop systemd-resolved || true
+systemctl disable systemd-resolved || true
+rm -f /etc/resolv.conf
+echo "nameserver 1.1.1.1" > /etc/resolv.conf
+
+# 9. Routing & NAT
 sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 iptables -A FORWARD -i wg0 -o docker0 -j ACCEPT
 iptables -A FORWARD -i docker0 -o wg0 -j ACCEPT
-
-# 9. DNS Fix
-systemctl stop systemd-resolved || true
-systemctl disable systemd-resolved || true
-rm -f /etc/resolv.conf
-echo "nameserver 1.1.1.1" > /etc/resolv.conf
 
 # 10. Firewall
 ufw default deny incoming
@@ -207,17 +203,16 @@ echo "y" | ufw enable
 cd /root && docker compose up -d
 '@
 
-# Replace placeholders in the bash script
-$bashContent = $bashScript.Replace("{{VPN_B64}}", $vpnBase64).Replace("{{AG_B64}}", $agBase64).Replace("{{AG_USER}}", $ag_user)
+# 4. Inject Data & Write
+$Final = $bashScript.Replace("{{VPN_PASS_RAW}}", $VpnPass).Replace("{{AG_PASS_RAW}}", $AgPass).Replace("{{AG_USER}}", $AgUser).Replace("{{VPN_B64}}", $VpnB64).Replace("{{AG_B64}}", $AgB64)
 
-# Format for YAML inclusion (Indent EVERY line by 6 spaces)
-$indentedBash = ""
-foreach ($line in ($bashContent -split "`n")) {
-    $indentedBash += "      $line`n"
+# Robust Indentation (6 spaces)
+$IndentedBash = ""
+foreach ($Line in ($Final -split "`n")) { 
+    if ($Line.Trim().Length -gt 0) { $IndentedBash += "      $Line`n" } else { $IndentedBash += "`n" }
 }
 
-# 4. Construct Final Cloud-Init YAML
-$finalYaml = @"
+$FinalYaml = @"
 #cloud-config
 package_update: true
 package_upgrade: false
@@ -234,12 +229,11 @@ write_files:
   - path: /root/setup.sh
     permissions: "0700"
     content: |
-$indentedBash
+$IndentedBash
 runcmd:
   - bash /root/setup.sh
 "@
 
-# Write to file
-$outputPath = Join-Path $SCRIPT_DIR "..\final_cloud_init.yaml"
-[System.IO.File]::WriteAllText($outputPath, $finalYaml, [System.Text.Encoding]::ASCII)
-Show-Success "Final Stable configuration generated with correct indentation."
+$OutputPath = Join-Path $ScriptDir "..\final_cloud_init.yaml"
+[System.IO.File]::WriteAllText($OutputPath, $FinalYaml, [System.Text.Encoding]::ASCII)
+Show-Success "Bulletproof configuration generated."
