@@ -7,14 +7,16 @@ $ScriptDir = $PSScriptRoot
 $Config = Get-VpnConfig
 $AgUser = $Config.adguard.username
 
-# 2. Handle Passwords (Strict Validation)
+# 2. Handle Passwords & Options
 if ($MyInvocation.ExpectingInput) {
     $inputData = @($input | Where-Object { $_ -ne $null })
     $VpnPass = $inputData[0].Trim()
     $AgPass = $inputData[1].Trim()
+    if ($inputData.Count -gt 2) { $InitialWgUser = $inputData[2].Trim() } else { $InitialWgUser = "" }
 } else {
     $VpnPass = (Read-Host "  VPN UI Password").Trim()
     $AgPass = (Read-Host "  Dashboard Password").Trim()
+    $InitialWgUser = ""
 }
 
 $VpnB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($VpnPass))
@@ -32,7 +34,7 @@ sleep 10
 
 # 1. Install Packages (Force reliable install)
 apt-get update
-apt-get install -y docker.io docker-compose-v2 curl ufw apache2-utils fail2ban unattended-upgrades
+apt-get install -y docker.io docker-compose-v2 curl ufw apache2-utils fail2ban unattended-upgrades jq
 
 # 2. RAM Optimization
 if [ ! -f /swapfile ]; then
@@ -201,10 +203,29 @@ echo "y" | ufw enable
 
 # 11. Launch
 cd /root && docker compose up -d
+
+# 12. Auto-Create Initial WireGuard User (Optional)
+INITIAL_USER="{{INITIAL_WG_USER}}"
+if [ -n "$INITIAL_USER" ]; then
+    echo "Waiting for WireGuard API to initialize..."
+    # Wait max 60 seconds for port 51821
+    for i in {1..12}; do
+        if curl -s http://172.20.0.6:51821/api/session > /dev/null; then break; fi
+        sleep 5
+    done
+    
+    echo "Creating initial user: $INITIAL_USER"
+    COOKIE="/tmp/wg_init_cookie"
+    # Authenticate
+    curl -s -c $COOKIE -H "Content-Type: application/json" -d "{\"password\":\"$VPN_PASS\"}" http://172.20.0.6:51821/api/session
+    # Create User
+    curl -s -b $COOKIE -H "Content-Type: application/json" -d "{\"name\":\"$INITIAL_USER\"}" http://172.20.0.6:51821/api/wireguard/client
+    rm -f $COOKIE
+fi
 '@
 
 # 4. Inject Data & Write
-$Final = $bashScript.Replace("{{VPN_PASS_RAW}}", $VpnPass).Replace("{{AG_PASS_RAW}}", $AgPass).Replace("{{AG_USER}}", $AgUser).Replace("{{VPN_B64}}", $VpnB64).Replace("{{AG_B64}}", $AgB64)
+$Final = $bashScript.Replace("{{VPN_PASS_RAW}}", $VpnPass).Replace("{{AG_PASS_RAW}}", $AgPass).Replace("{{AG_USER}}", $AgUser).Replace("{{VPN_B64}}", $VpnB64).Replace("{{AG_B64}}", $AgB64).Replace("{{INITIAL_WG_USER}}", $InitialWgUser)
 
 # Robust Indentation (6 spaces)
 $IndentedBash = ""

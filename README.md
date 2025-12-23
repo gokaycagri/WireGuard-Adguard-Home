@@ -20,6 +20,9 @@ A high-performance, security-hardened, and fully automated personal VPN solution
 *   **⚡ Performance Optimized:** 
     *   **MTU Tuning:** Preset to 1420 for stable mobile connections.
     *   **RAM Boost:** Automatic 2GB Swap file for stability on budget VMs.
+*   **👥 Easy Management:**
+    *   **User Manager:** CLI tool (`manage_users.ps1`) to add/remove VPN users instantly.
+    *   **Auto-Config:** Automatically creates and downloads your first VPN user during setup.
 *   **🌐 Complete Stack:**
     *   **WireGuard:** Modern, fast VPN tunneling (Auto-detected Public Endpoint).
     *   **AdGuard Home:** Private DNS with DNSSEC & encrypted upstreams (DoH/DoT).

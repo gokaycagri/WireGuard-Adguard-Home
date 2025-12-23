@@ -59,6 +59,9 @@ while ($true) {
     }
 }
 
+# Optional: Initial User
+$InitialWgUser = Read-Host "  Create initial WireGuard User? (Enter Name, e.g. 'MyPhone' - Leave empty to skip)"
+
 # 3. Save Configuration
 Show-Step "Saving settings to config.yaml..."
 $ConfigTemplate = @"
@@ -81,7 +84,7 @@ Set-Content -Path "$ScriptDir\automation\config.yaml" -Value $ConfigTemplate
 
 # 4. Generate Cloud-Init
 Show-Step "Generating server configuration..."
-$VpnPassword, $AdGuardPassword | & "$ScriptDir\automation\generate_cloud_init.ps1" | Out-Null
+$VpnPassword, $AdGuardPassword, $InitialWgUser | & "$ScriptDir\automation\generate_cloud_init.ps1" | Out-Null
 
 # 4.1 Run Pre-Flight Configuration Tests
 Show-Step "Running configuration unit tests..."
@@ -166,8 +169,41 @@ if ($Choice -eq "y") {
     Write-Host "VPN:       https://vpn.$ServerIp.sslip.io" -ForegroundColor White
     Write-Host "AdGuard:   https://adguard.$ServerIp.sslip.io" -ForegroundColor White
     Write-Host "SpeedTest: https://speed.$ServerIp.sslip.io" -ForegroundColor White
-    Write-Host "Glances:   https://glances.$ServerIp.sslip.io" -ForegroundColor White
+    Write-Host "Monitoring:   https://glances.$ServerIp.sslip.io" -ForegroundColor White
     
+    # --- AUTO-DOWNLOAD CONFIG ---
+    if (-not [string]::IsNullOrWhiteSpace($InitialWgUser)) {
+        Show-Step "Downloading initial VPN configuration for '$InitialWgUser'..."
+        try {
+            $AdminUser = $Config.azure.admin_user
+            $KeyPath = "~/.ssh/id_rsa"
+            $LocalApiScript = "$ScriptDir\automation\scripts\vpn_api.sh"
+            $RemoteApiScript = "/tmp/vpn_api_setup.sh"
+            
+            # Upload & Exec
+            Invoke-Expression "scp -o StrictHostKeyChecking=no -i $KeyPath $LocalApiScript ${AdminUser}@${ServerIp}:${RemoteApiScript}" | Out-Null
+            Invoke-Expression "ssh -o StrictHostKeyChecking=no -i $KeyPath ${AdminUser}@${ServerIp} 'chmod +x $RemoteApiScript'" | Out-Null
+            
+            # Fetch Config
+            $cmd = "ssh -o StrictHostKeyChecking=no -i $KeyPath ${AdminUser}@${ServerIp} '$RemoteApiScript \"$VpnPassword\" \"get-by-name\" \"$InitialWgUser\"'"
+            $VpnConfig = Invoke-Expression $cmd
+            
+            if ($VpnConfig -match "Interface") {
+                $SafeName = $InitialWgUser -replace '[^a-zA-Z0-9]', '_'
+                $OutFile = "$ScriptDir\$SafeName.conf"
+                Set-Content -Path $OutFile -Value $VpnConfig
+                Show-Success "VPN Config saved to: $OutFile"
+                Write-Host "You can now import this file into your WireGuard client!" -ForegroundColor Cyan
+            } else {
+                Write-Host "[SKIP] Could not auto-download config (User creation might still be in progress)." -ForegroundColor Yellow
+            }
+            # Cleanup
+            Invoke-Expression "ssh -o StrictHostKeyChecking=no -i $KeyPath ${AdminUser}@${ServerIp} 'rm -f $RemoteApiScript'" | Out-Null
+        } catch {
+            Write-Host "[WARNING] Auto-download failed: $_" -ForegroundColor Yellow
+        }
+    }
+
     Write-Host "`n--- MAINTENANCE NOTICE ---" -ForegroundColor Yellow
     Write-Host "SSL certificates expire every 90 days. Run:" -ForegroundColor Gray
     Write-Host "powershell automation/renew_ssl.ps1" -ForegroundColor Cyan

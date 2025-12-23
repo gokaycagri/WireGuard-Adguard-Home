@@ -26,8 +26,7 @@ powershell automation/check_requirements.ps1
     ```
     *This script handles all cloud-init generation, IP detection, and security hardening automatically.*
 2.  **Follow the Prompts:** Enter your Resource Group, VM Name, and desired Region.
-3.  **Dashboards:** Set your passwords.
-4.  **Deployment:** Confirm with `y` to begin the automated process.
+3.  **Initial User (Optional):** You can create your first VPN user (e.g., 'iPhone') during setup. The config file will be automatically downloaded to your folder.
 
 ## Access
 Once complete, use these secure links:
@@ -37,6 +36,16 @@ Once complete, use these secure links:
 *   **Glances:** `https://glances.<IP>.sslip.io`
 
 > **User:** `admin` (AdGuard)
+
+## User Management (New!)
+Easily add or remove VPN users without logging into the web UI.
+```powershell
+powershell ./manage_users.ps1
+```
+*   **List:** View active users.
+*   **Create:** Add a new user and generate a config.
+*   **Get Config:** Download the `.conf` file for any user.
+*   **Delete:** Remove access instantly.
 
 ## Maintenance
 
